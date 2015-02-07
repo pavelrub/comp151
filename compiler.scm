@@ -484,15 +484,30 @@
    "  return 0;" nl
    "}" nl))
 
+(define pe-seq?
+  (lambda (pe)
+    (and (list? pe) (eq? (car pe) 'seq))))
+
+(define code-gen-seq
+  (lambda (e env-size param-size)
+    (with e
+          (lambda (seq exprs)
+            (apply string-append
+                   (map (lambda (pe)
+                          (code-gen (pe env-size param-size)))
+                        exprs))))))
+
 (define code-gen
   (lambda (pe env-size param-size)
     (cond
+     ((pe-seq? pe) (code-gen-seq (pe env-size param-size)))
      ((pe-const? pe) ______________)
      ((pe-var? pe) ______________)
 ;    .
 ;    .
 ;    .
      (else (error ...)))))
+
 (define write-to-file
   (lambda (filename string)
     (let ((p (open-output-file filename '(replace))))
@@ -507,5 +522,3 @@
            (output-code (code-gen parsed-file))
            (complete-code (string-append prologue output-code epilogue)))
       (write-to-file target complete-code))))
-
-
