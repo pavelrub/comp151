@@ -484,21 +484,28 @@
    "  return 0;" nl
    "}" nl))
 
-
-;(define code-gen
-;  (lambda (pe env-size param-size)
-;    (cond
-;     ((pe-const? pe) ______________)
-;     ((pe-var? pe) ______________)
-;     .
-;     .
-;     .
-;     (else (error ...)))))
-(define write-to-file-test
+(define code-gen
+  (lambda (pe env-size param-size)
+    (cond
+     ((pe-const? pe) ______________)
+     ((pe-var? pe) ______________)
+;    .
+;    .
+;    .
+     (else (error ...)))))
+(define write-to-file
   (lambda (filename string)
     (let ((p (open-output-file filename '(replace))))
       (begin
         (display string p)
         (close-port p)))))
-;(define compile-scheme-file
- ;;; (lambda (source target)
+
+(define compile-scheme-file
+  (lambda (source target)
+    (let* ((sexprs (file->sexprs source)) ;perhaps check if it's a valid scheme file?
+           (parsed-file (pe->lex-pe (parse sexprs)))
+           (output-code (code-gen parsed-file))
+           (complete-code (string-append prologue output-code epilogue)))
+      (write-to-file target complete-code))))
+
+
