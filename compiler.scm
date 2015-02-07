@@ -480,6 +480,8 @@
 
 (define epilogue
   (string-append
+   "  PUSH(IND(R0));" nl
+   "  CALL(WRITE_SOB);" nl ;TODO: This assumes the value of *R0 is a Scheme Object. What if it's not? 
    "  STOP_MACHINE;" nl
    "  return 0;" nl
    "}" nl))
