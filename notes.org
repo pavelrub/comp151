@@ -1,0 +1,98 @@
+#+STARTUP: indent
+
+* Stuff to go-over before coding the compiler:
+** TODO Understand the structure of the expected stack:
+*** Environment
+Looks like a 2d array arranged by major and minor numbers. Expanded when a new closure is evaluated.
+Variable lookup is then O(1), because we know at compile time the lexical location (i.e. major+minor indexes) 
+of each variable. That is - the variable names are replaced by minor and major indexes, which are indexes in the 
+lexical environment array.
+**** TODO find out how the actual environment extension is done.
+Answer: The 2D array is simply a 1D array of pointers to 1D arrays. When a lambda expression is evaluated, the
+"env" array of the surrounding environment (the one in which the closure is evaluated) is expanded by 1, that is - 
+a new pointer is added at the beginning of the array, and the pvars of the surrounding environment are copied to the 
+array this pointer is pointing to.
+*** Stack pointer
+Points to the top of the stack.
+*** Frame pointer
+Points to the base of the current frame in the stack.
+Used to access stack fields whose position is known relative to the base of the stack, such as function arguments.
+When a new frame is opened - the old FP needs to be saved in the stack, in order to be retreived when the frame pops.
+** TODO Understand the SISC architecture
+** TODO How to create scheme objects such as #f, #t and void? How to create an empty list? 
+This is described in lecture 11.20 by Tomer. Apparently this lecture doesn't appear in the unified lecture notes. 
+Assaf said that the definition of constants as described there is only to be used as a "scaffolding", and needs to be replaced by
+proper constant tables later on. I need to make sure that this is the case.
+ 
+* Stuff to remember:
+** New C macros
+Define macros to comfortably retrieve stack arguments
+** C comments
+Adding C comments is apparently important (Mayer said that about half of the generated code should be C comments)
+He recommends generating comments for compiled expressions that say which expression it is supposed to be.
+For Example:
+#+BEGIN_SRC c
+  /* (pvar x j) */
+  MOVE(R0, FPARG(2 + j));
+  /* End of (pvar x j) */
+#+END_SRC 
+
+* Recommended implementation order:
+- Void, (), #f, #t
+- Seq, or, if, (and)
+- lambda-simple, applic
+-------
+- tc-applic
+- lambda-opt, lambda-var
+------
+- Consts
+------
+- fvar, def
+------
+- Lib
+
+* Open questions I run into:
+** On lecture 11.20, why does ADD(IND(0), IMM(1000)) reserve memory space?  
+Answer: I think this has something to do with the way memory management was implemented by Mayer.
+If I remember correctly, the first cell (cell 0) indicates the address of the next available cell (though how is it accessed?).
+So by setting it to 1000 - in effect 1000 cells are reserved for whatever we want.
+I will probably understand everything once I read the part about memory management.
+** How exactly to run test?
+
+* Stuff to do before implementation: [2/3]
+- [X] write the prologue [4/4]
+  - [X] implement #f
+  - [X] implement #t
+  - [X] implement void
+  - [X] implement ()
+- [X] write the epilogue
+- [ ] write a makefile
+
+* Implementation: [0%]
+** Step 1 (Turing complete)  [0/10]
+- [ ] void
+- [ ] #f
+- [ ] #t
+- [ ] () 
+------------
+- [ ] Seq
+- [ ] or
+- [ ] if
+- [ ] and
+------------
+- [ ] lambda-simple
+- [ ] applic
+** Step 2 [0/3]
+- [ ] tc-applic
+------------
+- [ ] lambda-opt
+- [ ] lambda-var
+** Step 3 [0/1]
+- [ ] Consts
+** Step 4 [0/2]
+- [ ] fvar
+- [ ] def
+** Step 5 [0/1]
+- [ ] Lib
+
+ 
