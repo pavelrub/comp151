@@ -467,15 +467,15 @@
    "  MOV(IND(2), IMM(T_NIL));" nl 
    "  #define SOB_NIL 2" nl 
    nl
-   "  /* #t definition */" nl
+   "  /* #f definition */" nl
    "  MOV(IND(3), IMM(T_BOOL))" nl
    "  MOV(IND(4), IMM(0))" nl
-   "  #define SOB_TRUE 3" nl 
+   "  #define SOB_FALSE 3" nl 
    nl
-   "  /* #f definition */" nl
+   "  /* #t definition */" nl
    "  MOV(IND(5), IMM(T_BOOL))" nl
    "  MOV(IND(6), IMM(1))" nl
-   "  #define SOB_FALSE 5" nl
+   "  #define SOB_TRUE 5" nl
    ))
 
 (define epilogue
