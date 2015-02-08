@@ -502,7 +502,7 @@
           (lambda (seq exprs)
             (apply string-append
                    (map (lambda (pe)
-                          (code-gen (pe env-size param-size)))
+                          (code-gen pe env-size param-size))
                         exprs))))))
 
 (define code-gen-const
@@ -531,7 +531,7 @@
 (define code-gen
   (lambda (pe env-size param-size)
     (cond
-     ((pe-seq? pe) (code-gen-seq (pe env-size param-size)))
+     ((pe-seq? pe) (code-gen-seq pe env-size param-size))
      ((pe-const? pe) (code-gen-const pe))
      (else (void))))) ;TODO: This needs to be replaced with an error message
 
