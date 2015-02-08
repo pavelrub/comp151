@@ -480,8 +480,10 @@
 
 (define epilogue
   (string-append
-   "  PUSH(IND(R0));" nl
+   "  /* printing the content of R0 */" nl
+   "  PUSH(R0);" nl
    "  CALL(WRITE_SOB);" nl ;TODO: This assumes the value of *R0 is a Scheme Object. What if it's not? 
+   "  /* Stopping the machine */" nl
    "  STOP_MACHINE;" nl
    "  return 0;" nl
    "}" nl))
@@ -489,6 +491,10 @@
 (define pe-seq?
   (lambda (pe)
     (and (list? pe) (eq? (car pe) 'seq))))
+
+(define pe-const?
+  (lambda (pe)
+    (eq? (car pe) 'const)))
 
 (define code-gen-seq
   (lambda (e env-size param-size)
@@ -506,17 +512,21 @@
             (cond
              ((eq? c #f) (string-append
                           "/* #f */" nl
-                          "MOVE(R0, SOB_FALSE);" nl))
-              ((eq? c #t) (string-append
+                          "MOV(R0, SOB_FALSE);" nl
+                          "/* end of #f */" nl))
+             ((eq? c #t) (string-append
                           "/* #t */" nl
-                          "MOVE(R0, SOB_TRUE);" nl))
-              ((eq? c void) (string-append
-                            "/* #<void> */" nl
-                            "MOVE(R0, SOB_VOID);" nl))
-              ((eq? c '()) (string-append
-                            "/* '() (empty list) */" nl
-                            "MOVE(R0, SOB_NIL);" nl))
-              )))))
+                          "MOV(R0, SOB_TRUE);" nl
+                          "/* end of #t */" nl))
+             ((eq? c *void-object*) (string-append
+                                     "/* #<void> */" nl
+                                     "MOV(R0, SOB_VOID);" nl
+                                     "/* end of #<void> */" nl))
+             ((eq? c '()) (string-append
+                           "/* '() (empty list) */" nl
+                           "MOV(R0, SOB_NIL);" nl
+                           "/* end of '() */" nl))
+             )))))
 
 (define code-gen
   (lambda (pe env-size param-size)
@@ -532,10 +542,23 @@
         (display string p)
         (close-port p)))))
 
+(define compile-test
+  (lambda (source)
+    (let* ((sexprs (file->sexprs source))
+           (output-code 
+            (apply string-append (map
+                                  (lambda (x)
+                                    (code-gen x '() '()))
+                                  (map parse sexprs))))
+           (complete-code (string-append prologue output-code epilogue)))
+      (write-to-file "out.c" complete-code))))
+;           parsed-file (pe->lex-pe `(,parse ,@sexprs))))
+;      (code-gen parsed-file '() '()))))
+
 (define compile-scheme-file
   (lambda (source target)
     (let* ((sexprs (file->sexprs source)) ;perhaps check if it's a valid scheme file?
-           (parsed-file (pe->lex-pe (parse sexprs)))
-           (output-code (code-gen parsed-file))
+           (parsed-file (pe->lex-pe `(,parse ,@sexprs)))
+           (output-code (code-gen parsed-file '() '()))
            (complete-code (string-append prologue output-code epilogue)))
       (write-to-file target complete-code))))
