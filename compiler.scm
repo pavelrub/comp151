@@ -434,7 +434,17 @@
                         (cons e (run)))))))
         (run)))))
 
+(define ^^label
+  (lambda (name)
+    (let ((n 0))
+      (lambda ()
+        (set! n (+ n 1))
+        (string-append name
+                       (number->string n))))))
+
+
 (define nl (list->string (list #\newline)))
+
 (define prologue
   (string-append
    "#include <stdio.h>" nl
@@ -496,6 +506,10 @@
   (lambda (pe)
     (eq? (car pe) 'const)))
 
+(define pe-or?
+  (lambda (pe)
+    (eq? (car pe) 'or)))
+  
 (define code-gen-seq
   (lambda (e env-size param-size)
     (with e
@@ -528,11 +542,63 @@
                            "/* end of '() */" nl))
              )))))
 
+(define ^label-orexit (^^label "Lor_exit"))
+
+(define code-gen-or
+  (lambda (pe env-size param-size)
+    (with pe
+          (lambda (or pes)
+            (let* ((first-pes (get-all-but-last pes))
+                  (last-pe (get-last pes))
+                  (label-exit (^label-orexit))
+                  (first-pes-code 
+                   (apply string-append
+                          (map (lambda (e)
+                                 (string-append
+                                  (code-gen e env-size param-size)
+                                  "  CMP(R0, IMM(SOB_FALSE));" nl
+                                  "  JUMP_NE(" label-exit ");" nl))
+                               first-pes)))
+                  (last-pe-code (code-gen last-pe env-size param-size)))
+              (string-append
+               first-pes-code
+               last-pe-code
+               label-exit ":"
+               nl))))))
+                  
+(define pe-if3?
+  (lambda (pe)
+    (and (list? pe) (eq? (car pe) 'if3))))
+                               
+(define ^label-if3else (^^label "Lif3else"))
+(define ^label-if3exit (^^label "Lif3exit"))
+(define code-gen-if3
+  (lambda (e env-size param-size)
+    (with e
+          (lambda (if3 test do-if-true do-if-false)
+            (let ((code-test (code-gen test env-size param-size))
+                  (code-dit (code-gen do-if-true env-size param-size))
+                  (code-dif (code-gen do-if-false env-size param-size))
+                  (label-else (^label-if3else))
+                  (label-exit (^label-if3exit)))
+              (string-append
+               code-test nl ; when run, the result of the test will be in R0
+               "  CMP(R0, SOB_FALSE);" nl
+               "  JUMP_EQ(" label-else ");" nl
+               code-dit nl
+               "  JUMP(" label-exit ");" nl
+               label-else ":" nl
+               code-dif nl
+               label-exit ":"
+               nl))))))
+
 (define code-gen
   (lambda (pe env-size param-size)
     (cond
      ((pe-seq? pe) (code-gen-seq pe env-size param-size))
      ((pe-const? pe) (code-gen-const pe))
+     ((pe-or? pe) (code-gen-or pe env-size param-size))
+     ((pe-if3? pe) (code-gen-if3 pe env-size param-size))
      (else (void))))) ;TODO: This needs to be replaced with an error message
 
 (define write-to-file
