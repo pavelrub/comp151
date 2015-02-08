@@ -618,13 +618,14 @@
                                   (map parse sexprs))))
            (complete-code (string-append prologue output-code epilogue)))
       (write-to-file "out.c" complete-code))))
-;           parsed-file (pe->lex-pe `(,parse ,@sexprs))))
-;      (code-gen parsed-file '() '()))))
 
 (define compile-scheme-file
   (lambda (source target)
-    (let* ((sexprs (file->sexprs source)) ;perhaps check if it's a valid scheme file?
-           (parsed-file (pe->lex-pe `(,parse ,@sexprs)))
-           (output-code (code-gen parsed-file '() '()))
+    (let* ((sexprs (file->sexprs source))
+           (output-code 
+            (apply string-append (map
+                                  (lambda (x)
+                                    (code-gen x '() '()))
+                                  (map parse sexprs))))
            (complete-code (string-append prologue output-code epilogue)))
       (write-to-file target complete-code))))
