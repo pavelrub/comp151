@@ -561,9 +561,11 @@
                                first-pes)))
                   (last-pe-code (code-gen last-pe env-size param-size)))
               (string-append
+               "/* or */" nl
                first-pes-code
                last-pe-code
                label-exit ":"
+               "/* end of or*/" 
                nl))))))
                   
 (define pe-if3?
@@ -582,6 +584,7 @@
                   (label-else (^label-if3else))
                   (label-exit (^label-if3exit)))
               (string-append
+               "/* if3 */"
                code-test nl ; when run, the result of the test will be in R0
                "  CMP(R0, SOB_FALSE);" nl
                "  JUMP_EQ(" label-else ");" nl
@@ -589,7 +592,8 @@
                "  JUMP(" label-exit ");" nl
                label-else ":" nl
                code-dif nl
-               label-exit ":"
+               label-exit ":" nl
+               "/* end of if3 */"
                nl))))))
 
 (define code-gen
