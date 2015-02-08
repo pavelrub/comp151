@@ -1,6 +1,9 @@
-# A basic makefile for building compiled scheme files
-all: out.c
-	gcc -g -Wall -o out out.c
+CC=gcc
+CFLAGS=-g -Wall
+SRCS = $(wildcard *.c)
+PROGS = $(patsubst %.c,%,$(SRCS))
 
-clean:
-	rm *.o out
+all: $(PROGS)
+
+%: %.c
+	$(CC) $(CFLAGS) -o $@ $<
