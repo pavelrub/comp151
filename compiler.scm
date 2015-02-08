@@ -499,16 +499,31 @@
                           (code-gen (pe env-size param-size)))
                         exprs))))))
 
+(define code-gen-const
+  (lambda (e)
+    (with e
+          (lambda (const c)
+            (cond
+             ((eq? c #f) (string-append
+                          "/* #f */" nl
+                          "MOVE(R0, SOB_FALSE);" nl))
+              ((eq? c #t) (string-append
+                          "/* #t */" nl
+                          "MOVE(R0, SOB_TRUE);" nl))
+              ((eq? c void) (string-append
+                            "/* #<void> */" nl
+                            "MOVE(R0, SOB_VOID);" nl))
+              ((eq? c '()) (string-append
+                            "/* '() (empty list) */" nl
+                            "MOVE(R0, SOB_NIL);" nl))
+              )))))
+
 (define code-gen
   (lambda (pe env-size param-size)
     (cond
      ((pe-seq? pe) (code-gen-seq (pe env-size param-size)))
-     ((pe-const? pe) ______________)
-     ((pe-var? pe) ______________)
-;    .
-;    .
-;    .
-     (else (error ...)))))
+     ((pe-const? pe) (code-gen-const pe))
+     (else (void))))) ;TODO: This needs to be replaced with an error message
 
 (define write-to-file
   (lambda (filename string)
