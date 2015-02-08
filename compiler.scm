@@ -618,7 +618,7 @@
            (output-code 
             (apply string-append (map
                                   (lambda (x)
-                                    (code-gen x '() '()))
+                                    (code-gen x 0 0))
                                   (map parse sexprs))))
            (complete-code (string-append prologue output-code epilogue)))
       (write-to-file "out.c" complete-code))))
@@ -629,7 +629,7 @@
            (output-code 
             (apply string-append (map
                                   (lambda (x)
-                                    (code-gen x '() '()))
+                                    (code-gen x 0 0))
                                   (map parse sexprs))))
            (complete-code (string-append prologue output-code epilogue)))
       (write-to-file target complete-code))))
