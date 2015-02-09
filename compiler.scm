@@ -490,13 +490,20 @@
 
 (define epilogue
   (string-append
-   "  /* printing the content of R0 */" nl
-   "  PUSH(R0);" nl
-   "  CALL(WRITE_SOB);" nl ;TODO: This assumes the value of *R0 is a Scheme Object. What if it's not? 
    "  /* Stopping the machine */" nl
    "  STOP_MACHINE;" nl
    "  return 0;" nl
    "}" nl))
+
+(define epilogue-sexpr
+  (string-append
+   "  /* printing the content of R0 */" nl
+   "  PUSH(R0);" nl
+   "  CALL(WRITE_SOB);" nl ;TODO: This assumes the value of *R0 is a Scheme Object. What if it's not? 
+   "  CALL(NEWLINE);" nl
+   "  /* done printing the content of R0 */" nl
+   ))
+   
 
 (define pe-seq?
   (lambda (pe)
@@ -596,6 +603,58 @@
                "/* end of if3 */"
                nl))))))
 
+(define pe-lambda-simple?
+  (lambda (pe)
+    (and (list? pe) (eq? (car pe) 'lambda-simple))))
+
+(define ^label-lambda-code (^^label "Llambdacode"))
+(define ^label-lambda-exit (^^labal "Llambdaexit"))
+(define code-gen-lambda-simple
+  (lambda (pe env-size param-size)
+    (with e
+          (lambda (lambda-simple params body)
+            (let ((new-env-size-str (number->string (+ env-size 1)))
+                  (param-size-str (number->string param-size)))
+              (string-append
+               "/* lambda-simple */"
+               "  int i,j;" nl
+               "  PUSH(IMM("new-env-size-str"));" nl
+               "  CALL(MALLOC);" nl
+               "  MOV(R1,R0);" nl
+               "  R2 = FPARG(0); //env" nl
+               "  for (i=0, j=1; i < IMM("new-env-size-str"); ++i, ++j)" nl
+               "  {" nl
+               "    MOV(INDD(R1,j), INDD(R2,i));" nl
+               "  }" nl
+               "  PUSH(IMM("param-size-str"));" nl
+               "  MOV(R3, R0);" nl
+               "  for (i=0; i < IMM("param-size-str"); ++i)" nl
+               "  {" nl
+               "    MOV(R4,IMM(2));" nl
+               "    ADD(R4,IMM(i));" nl
+               "    MOV(INDD(R3,i),FPARG(R4));" nl
+               "    R3[i] = FPARG(2+i);" nl
+               "  }" nl
+               "  R1[0] = R3; //Now R1 holds the environment" nl
+               nl
+               "  PUSH(IMM(3));" nl
+               "  CALL(MALLOC);" nl
+               "  MOV(INDD(R0,IMM(0)), T_CLOSURE);" nl
+               "  MOV(INDD(R0,IMM(1)), R1);" nl
+               "  MOV(INDD(R0,IMM(2)), &&"label-lambda-code"));" nl
+               "  JUMP("label-lambda-exit");" nl
+               nl
+               label-lambda-code ":" nl
+               "  PUSH(FP);" nl
+               "  MOV(FP,SP);" nl
+               "  /* code-gen of the lambda body */" nl
+               (code-gen body (+ env-size 1) (length params))
+               "  /* end of code-gen for lambda body */" nl
+               "  POP(FP);" nl
+               "  return;" nl
+               label-lambda-exit ":" nl
+
+       
 (define code-gen
   (lambda (pe env-size param-size)
     (cond
@@ -603,6 +662,7 @@
      ((pe-const? pe) (code-gen-const pe))
      ((pe-or? pe) (code-gen-or pe env-size param-size))
      ((pe-if3? pe) (code-gen-if3 pe env-size param-size))
+     ((pe-lambda-simple? pe) (code-gen-lambda-simple pe env-size param-size))
      (else (void))))) ;TODO: This needs to be replaced with an error message
 
 (define write-to-file
@@ -629,7 +689,9 @@
            (output-code 
             (apply string-append (map
                                   (lambda (x)
-                                    (code-gen x 0 0))
+                                    (string-append
+                                     (code-gen x 0 0)
+                                     epilogue-sexpr))
                                   (map parse sexprs))))
            (complete-code (string-append prologue output-code epilogue)))
       (write-to-file target complete-code))))
