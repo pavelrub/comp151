@@ -608,13 +608,15 @@
     (and (list? pe) (eq? (car pe) 'lambda-simple))))
 
 (define ^label-lambda-code (^^label "Llambdacode"))
-(define ^label-lambda-exit (^^labal "Llambdaexit"))
+(define ^label-lambda-exit (^^label "Llambdaexit"))
 (define code-gen-lambda-simple
-  (lambda (pe env-size param-size)
+  (lambda (e env-size param-size)
     (with e
           (lambda (lambda-simple params body)
             (let ((new-env-size-str (number->string (+ env-size 1)))
-                  (param-size-str (number->string param-size)))
+                  (param-size-str (number->string param-size))
+                  (label-code (^label-lambda-code))
+                  (label-exit (^label-lambda-exit)))
               (string-append
                "/* lambda-simple */"
                "  int i,j;" nl
@@ -633,18 +635,17 @@
                "    MOV(R4,IMM(2));" nl
                "    ADD(R4,IMM(i));" nl
                "    MOV(INDD(R3,i),FPARG(R4));" nl
-               "    R3[i] = FPARG(2+i);" nl
                "  }" nl
-               "  R1[0] = R3; //Now R1 holds the environment" nl
+               "  MOV(INDD(R1,0), R3); //Now R1 holds the environment" nl
                nl
                "  PUSH(IMM(3));" nl
                "  CALL(MALLOC);" nl
                "  MOV(INDD(R0,IMM(0)), T_CLOSURE);" nl
                "  MOV(INDD(R0,IMM(1)), R1);" nl
-               "  MOV(INDD(R0,IMM(2)), &&"label-lambda-code"));" nl
-               "  JUMP("label-lambda-exit");" nl
+               "  MOV(INDD(R0,IMM(2)), &&"label-code");" nl
+               "  JUMP("label-exit");" nl
                nl
-               label-lambda-code ":" nl
+               label-code ":" nl
                "  PUSH(FP);" nl
                "  MOV(FP,SP);" nl
                "  /* code-gen of the lambda body */" nl
@@ -652,17 +653,61 @@
                "  /* end of code-gen for lambda body */" nl
                "  POP(FP);" nl
                "  return;" nl
-               label-lambda-exit ":" nl
+               label-exit ":" nl))))))
+
+(define pe-pvar?
+  (lambda (pe)
+    (and (list? pe) (eq? (car pe) 'pvar))))
+
+(define pe-bvar?
+  (lambda (pe)
+    (and (list? pe) (eq? (car pe) 'bvar))))
+
+(define code-gen-pvar
+  (lambda (e env-size param-size)
+    (with e
+          (lambda (pvar var minor)
+            (let ((minor-in-stack-str (number->string (+ minor 2))))
+              (string-append
+               "  /* pvar */" nl
+               "  MOV(R0, FPARG(IMM("minor-in-stack-str")));" nl
+               "  /* end of pvar */" nl
+               ))))))
+
+(define code-gen-bvar
+  (lambda (e env-size param-size)
+    (with e
+          (lambda (bvar var major minor)
+            (string-append
+             "  /* bvar */" nl
+             "  MOV(R0, FPARG(IMM(0))); /* env */" nl
+             "  MOV(R0, INDD(RO,"(number->string major)")); /* major */" nl
+             "  MOV(R0, INDD(R0,"(number->string minor)")); /* value */" nl
+             "  /* end of bvar */" nl
+             )))))
+           
+            
+(define pe-applic?
+  (lambda (pe)
+    (and (list? pe) (eq? (car pe) 'applic))))
+
+(define code-gen-applic
+  (lambda (e env-size param-size)
+    (with e
+          (lambda (applic proc args)))))
 
        
 (define code-gen
   (lambda (pe env-size param-size)
     (cond
+     ((pe-pvar? pe) (code-gen-pvar pe env-size param-size)) 
+     ((pe-bvar? pe) (code-gen-bvar pe env-size param-size)) 
      ((pe-seq? pe) (code-gen-seq pe env-size param-size))
      ((pe-const? pe) (code-gen-const pe))
      ((pe-or? pe) (code-gen-or pe env-size param-size))
      ((pe-if3? pe) (code-gen-if3 pe env-size param-size))
      ((pe-lambda-simple? pe) (code-gen-lambda-simple pe env-size param-size))
+     ((pe-applic? pe) (code-gen-applic pe env-size param-size))
      (else (void))))) ;TODO: This needs to be replaced with an error message
 
 (define write-to-file
