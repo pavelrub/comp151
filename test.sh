@@ -7,6 +7,7 @@
 (cd $1 && make clean)
 for f in ${1}/*.scm;
 do
+  echo "generating code for ${f}"
   echo "(compile-scheme-file \"${f}\" \"${f%.scm}.c\")" | petite compiler.scm -q
   cat $f | petite -q > ${f%.scm}.txt
 done
@@ -17,7 +18,8 @@ do
   if [[ -x "$f" ]] 
   then
     ./$f > ${f}-out.txt
-    diff -Z ${f}-out.txt ${f}.txt
+    echo "diff for ${f}:"
+    diff -Z ${f}-out.txt ${f}.txt | sed "s/^/    /"
   fi
 done
 
