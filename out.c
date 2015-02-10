@@ -37,18 +37,43 @@ CONTINUE:
   MOV(IND(5), IMM(T_BOOL))
   MOV(IND(6), IMM(1))
   #define SOB_TRUE 5
+/* if3 *//* or */
 /* #f */
 MOV(R0, SOB_FALSE);
 /* end of #f */
-/* #t */
-MOV(R0, SOB_TRUE);
-/* end of #t */
+  CMP(R0, IMM(SOB_FALSE));
+  JUMP_NE(Lor_exit4);
 /* #f */
 MOV(R0, SOB_FALSE);
 /* end of #f */
+Lor_exit4:/* end of or*/
+
+  CMP(R0, SOB_FALSE);
+  JUMP_EQ(Lif3else2);
+/* #f */
+MOV(R0, SOB_FALSE);
+/* end of #f */
+
+  JUMP(Lif3exit2);
+Lif3else2:
+/* or */
+/* #f */
+MOV(R0, SOB_FALSE);
+/* end of #f */
+  CMP(R0, IMM(SOB_FALSE));
+  JUMP_NE(Lor_exit3);
 /* #t */
 MOV(R0, SOB_TRUE);
 /* end of #t */
+  CMP(R0, IMM(SOB_FALSE));
+  JUMP_NE(Lor_exit3);
+/* #f */
+MOV(R0, SOB_FALSE);
+/* end of #f */
+Lor_exit3:/* end of or*/
+
+Lif3exit2:
+/* end of if3 */
   /* printing the content of R0 */
   PUSH(R0);
   CALL(WRITE_SOB);
