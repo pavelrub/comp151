@@ -445,6 +445,9 @@
 
 (define nl (list->string (list #\newline)))
 
+(define label-not-proc "Lnot_proc")
+(define label-end-program "Lend")
+
 (define prologue
   (string-append
    "#include <stdio.h>" nl
@@ -453,6 +456,7 @@
    "" nl
    "int main()" nl
    "{" nl
+   "  int i,j;" nl ;Declared here because otherwise there could be multiple declerations in a file
    "  START_MACHINE;" nl
    "  JUMP(CONTINUE);" nl
    "#include \"arch/char.lib\"" nl
@@ -462,6 +466,8 @@
    "#include \"arch/system.lib\"" nl
    "#include \"arch/scheme.lib\"" nl
    nl
+   label-not-proc":" nl
+   "JUMP("label-end-program");" nl
    "CONTINUE:" nl
    "/* definitions of some basic scheme objects */" nl
    "/* this might be replaced later when symbols are properly implemented */" nl
@@ -491,6 +497,7 @@
 (define epilogue
   (string-append
    "  /* Stopping the machine */" nl
+   label-end-program":" nl
    "  STOP_MACHINE;" nl
    "  return 0;" nl
    "}" nl))
@@ -618,31 +625,43 @@
                   (label-code (^label-lambda-code))
                   (label-exit (^label-lambda-exit)))
               (string-append
-               "/* lambda-simple */"
-               "  int i,j;" nl
+               "  /* lambda-simple */" nl
+               "  /* allocating memory for new environment */" nl
                "  PUSH(IMM("new-env-size-str"));" nl
                "  CALL(MALLOC);" nl
                "  MOV(R1,R0);" nl
-               "  R2 = FPARG(0); //env" nl
-               "  for (i=0, j=1; i < IMM("new-env-size-str"); ++i, ++j)" nl
-               "  {" nl
+               "  /* end of memory allocation. The result is in R1 */" nl
+               "  MOV(R2,FPARG(0)); //pointer to previous env is in R2" nl
+               "  /* Copying old env to new env location. R1 points to the new env, R2 to the old */" nl
+               "  for (i=0, j=1; i < IMM("(number->string env-size)"); ++i, ++j)" nl
+               "  {" nl;
                "    MOV(INDD(R1,j), INDD(R2,i));" nl
                "  }" nl
+               "  /* done copying old env to new env location. Note that R1[0] is reserved for the environment expansion (not part of the old env) */" nl
+               "  /* allocating memory for a new row in the new environment array (will be pointer from R0[0]) */" nl
                "  PUSH(IMM("param-size-str"));" nl
+               "  CALL(MALLOC);" nl
                "  MOV(R3, R0);" nl
+               "  /* done allocating memory. The address is in R3 */" nl
+               "  /* Copying old params to the new environment (they turn from pvars to bvars)*/" nl
                "  for (i=0; i < IMM("param-size-str"); ++i)" nl
                "  {" nl
+               "    /* The following 3 lines: r3[i] = FPARG(2+i). Note that FPARG(2+i) holds the i-th argument to the surrounding lambda */" nl
                "    MOV(R4,IMM(2));" nl
                "    ADD(R4,IMM(i));" nl
                "    MOV(INDD(R3,i),FPARG(R4));" nl
                "  }" nl
-               "  MOV(INDD(R1,0), R3); //Now R1 holds the environment" nl
+               "  /* Done copying old params to new environment */" nl
+               "  MOV(INDD(R1,0), R3); //R0[0] now points to the first row in the new expanded environment" nl
                nl
+               "  /* Create the closure object */" nl
                "  PUSH(IMM(3));" nl
                "  CALL(MALLOC);" nl
-               "  MOV(INDD(R0,IMM(0)), T_CLOSURE);" nl
-               "  MOV(INDD(R0,IMM(1)), R1);" nl
-               "  MOV(INDD(R0,IMM(2)), &&"label-code");" nl
+               "  MOV(INDD(R0,IMM(0)), T_CLOSURE); //Type of the object" nl
+               "  MOV(INDD(R0,IMM(1)), R1); //Pointer to the environment" nl
+               "  MOV(INDD(R0,IMM(2)), &&"label-code"); //Pointer to the body code of the procedure" nl
+               "  /* Done creating the closure object */" nl
+               "  DROP(IMM(3)); /* Remove all the PUSH operations done for the closure creation */" nl
                "  JUMP("label-exit");" nl
                nl
                label-code ":" nl
@@ -652,7 +671,7 @@
                (code-gen body (+ env-size 1) (length params))
                "  /* end of code-gen for lambda body */" nl
                "  POP(FP);" nl
-               "  return;" nl
+               "  RETURN;" nl
                label-exit ":" nl))))))
 
 (define pe-pvar?
@@ -694,7 +713,28 @@
 (define code-gen-applic
   (lambda (e env-size param-size)
     (with e
-          (lambda (applic proc args)))))
+          (lambda (applic proc args)
+            (let ((args-num-string (number->string (length args))))
+              (string-append
+               "  /* applic */" nl
+               (apply string-append (map
+                                     (lambda (arg)
+                                       (string-append
+                                        (code-gen arg env-size param-size)
+                                        "  PUSH(R0);" nl))
+                                     (reverse args)))
+               "  PUSH(IMM("args-num-string"))" nl
+               (code-gen proc env-size param-size)
+               "  CMP(IND(R0), T_CLOSURE);" nl 
+               "  JUMP_NE("label-not-proc");" nl
+               "  PUSH(INDD(R0,IMM(1)))" nl
+               "  CALLA(INDD(R0,IMM(2)))" nl
+               "  MOV(R1, IMM(0));" nl
+               "  ADD(R1, STARG(IMM(0)));" nl
+               "  ADD(R1, IMM(2));" nl
+               "  DROP(R1);" nl
+               " /* end of applic */" nl
+               ))))))
 
        
 (define code-gen
@@ -737,6 +777,6 @@
                                     (string-append
                                      (code-gen x 0 0)
                                      epilogue-sexpr))
-                                  (map parse sexprs))))
+                                  (map (lambda (expr) (pe->lex-pe (parse expr)))sexprs))))
            (complete-code (string-append prologue output-code epilogue)))
       (write-to-file target complete-code))))
