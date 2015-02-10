@@ -1,2 +1,4 @@
 \#*#
 *.org
+tests/*.c
+tests/*.txt
