@@ -618,6 +618,8 @@
 
 (define ^label-lambda-code (^^label "Llambdacode"))
 (define ^label-lambda-exit (^^label "Llambdaexit"))
+(define ^label-loop (^^label "Lloop"))
+(define ^label-end-loop (^^label "Lendloop"))
 (define code-gen-lambda-simple
   (lambda (e env-size param-size)
     (with e
@@ -625,7 +627,11 @@
             (let ((new-env-size-str (number->string (+ env-size 1)))
                   (param-size-str (number->string param-size))
                   (label-code (^label-lambda-code))
-                  (label-exit (^label-lambda-exit)))
+                  (label-exit (^label-lambda-exit))
+                  (label-loop1 (^label-loop))
+                  (label-endloop1 (^label-end-loop))
+                  (label-loop2 (^label-loop))
+                  (label-endloop2 (^label-end-loop)))
               (string-append
                "  /* lambda-simple */" nl
                "  /* allocating memory for new environment */" nl
@@ -635,10 +641,20 @@
                "  /* end of memory allocation. The result is in R1 */" nl
                "  MOV(R2,FPARG(0)); //pointer to previous env is in R2" nl
                "  /* Copying old env to new env location. R1 points to the new env, R2 to the old */" nl
-               "  for (i=0, j=1; i < IMM("(number->string env-size)"); i++, j++)" nl
-               "  {" nl;
-               "    MOV(INDD(R1,j), INDD(R2,i));" nl
-               "  }" nl
+               "  MOV(R3, IMM(0)); //loop counter" nl
+               "  MOV(R4, IMM(1)); //index into new env" nl
+               label-loop1":" nl
+               "  CMP(IMM(R3), IMM("(number->string env-size)")); //loop condition" nl
+               "  JUMP_GE("label-endloop1");" nl
+               "  MOV(INDD(R1,IMM(R4)), INDD(R2,IMM(R3)));" nl
+               "  ADD(R3, IMM(1));" nl
+               "  ADD(R4, IMM(1));" nl
+               "  JUMP("label-loop1");" nl
+               label-endloop1":" nl
+               ;"  for (i=0, j=1; i < IMM("(number->string env-size)"); i++, j++)" nl
+               ;"  {" nl;
+               ;"    MOV(INDD(R1,j), INDD(R2,i));" nl
+               ;"  }" nl
                "  /* done copying old env to new env location. Note that R1[0] is reserved for the environment expansion (not part of the old env) */" nl
                "  /* allocating memory for a new row in the new environment array (will be pointer from R0[0]) */" nl
                "  PUSH(IMM("param-size-str"));" nl
@@ -646,13 +662,24 @@
                "  MOV(R3, R0);" nl
                "  /* done allocating memory. The address is in R3 */" nl
                "  /* Copying old params to the new environment (they turn from pvars to bvars)*/" nl
-               "  for (i=0; i < IMM("param-size-str"); i++)" nl
-               "  {" nl
-               "    /* The following 3 lines: r3[i] = FPARG(2+i). Note that FPARG(2+i) holds the i-th argument to the surrounding lambda */" nl
-               "    MOV(R4,IMM(2));" nl
-               "    ADD(R4,IMM(i));" nl
-               "    MOV(INDD(R3,i),FPARG(R4));" nl
-               "  }" nl
+               "  MOV(R5,0); //loop counter" nl
+               label-loop2":" nl
+               "  CMP(IMM(R5),IMM("param-size-str")); //loop condition" nl
+               "  JUMP_GE("label-endloop2");" nl
+               ;  /* The following 3 lines: r3[i] = FPARG(2+i). Note that FPARG(2+i) holds the i-th argument to the surrounding lambda */" nl
+               "  MOV(R4,IMM(2));" nl
+               "  ADD(R4,IMM(R5));" nl
+               "  MOV(INDD(R3,IMM(R5)),FPARG(R4));" nl
+               "  ADD(R5,IMM(1));" nl
+               "  JUMP("label-loop2");" nl
+               label-endloop2":" nl  
+               ;"  for (i=0; i < IMM("param-size-str"); i++)" nl
+               ;"  {" nl
+               ;"    /* The following 3 lines: r3[i] = FPARG(2+i). Note that FPARG(2+i) holds the i-th argument to the surrounding lambda */" nl
+               ;"    MOV(R4,IMM(2));" nl
+               ;"    ADD(R4,IMM(i));" nl
+               ;"    MOV(INDD(R3,i),FPARG(R4));" nl
+               ;"  }" nl
                "  /* Done copying old params to new environment */" nl
                "  MOV(INDD(R1,0), R3); //R1[0] now points to the first row in the new expanded environment" nl
                nl
@@ -745,7 +772,10 @@
   (lambda (e env-size param-size)
     (with e
           (lambda (tc-applic proc args)
-            (let ((args-num-string (number->string (length args))))
+            (let ((args-num-string (number->string (length args)))
+                  (frame-copy-steps (number->string (+ (length args) 4)))
+                  (label-loop (^label-loop))
+                  (label-endloop (^label-end-loop)))
               (string-append
                "  /* tc-applic */" nl
                "  /* Pushing arguments */" nl
@@ -766,12 +796,26 @@
                "  MOV(FP,FPARG(IMM(-2))); //Restore old FP in preperation for JUMP" nl
                "  MOV(R1,FP);"  nl
                "  /* Loop to overwrite the old frame */" nl
-               "  for (i=0; i<"args-num-string"+4; i++)" nl
-               "  {" nl
-               "    MOV(STACK(IMM(R1)), STARG("args-num-string"+2-i));" nl
-               "    INFO;" nl
-               "    ADD(R1,IMM(1));" nl
-               "  }" nl
+               "  MOV(R2, IMM(0)); //loop counter" nl
+               "  MOV(R3, IMM(2));" nl
+               "  ADD(R3, IMM("args-num-string"));" nl
+               label-loop":" nl
+               "  CMP(IMM(R2),IMM("frame-copy-steps")); //loop condition" nl
+               "  JUMP_GE("label-endloop");" nl
+               "  MOV(STACK(IMM(R1)), STARG(IMM(R3)));" nl
+               "  INFO;" nl
+               "  ADD(R1,IMM(1));" nl
+               "  ADD(R2,IMM(1)); //incrementing loop counter" nl 
+               "  SUB(R3, IMM(1));" nl
+               "  JUMP("label-loop");" nl
+               label-endloop":" nl
+               "  /* End of loop to overwrite old frame */" nl
+               ;"  for (i=0; i<"args-num-string"+4; i++)" nl
+               ;"  {" nl
+               ;"    MOV(STACK(IMM(R1)), STARG("args-num-string"+2-i));" nl
+               ;"    INFO;" nl
+               ;"    ADD(R1,IMM(1));" nl
+               ;"  }" nl
                "  MOV(SP,IMM(R1));" nl
                "  CALLA(INDD(R0,IMM(2))); //Jump to procedure code" nl
                ))))))
@@ -819,6 +863,6 @@
                                     (string-append
                                      (code-gen x 0 0)
                                      epilogue-sexpr))
-                                  (map (lambda (expr) (annotate-tc (pe->lex-pe (parse expr)))) sexprs))))
+                                  (map (lambda (expr) (pe->lex-pe (parse expr))) sexprs))))
            (complete-code (string-append prologue output-code epilogue)))
       (write-to-file target complete-code))))
