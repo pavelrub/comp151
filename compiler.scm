@@ -219,7 +219,7 @@
            (lambda (expr1 expr2)
              (parse `(if ,expr1 ,expr2 #f))))
           (pattern-rule
-           `(and ,(? 'expr) . ,(? 'rest))
+          `(and ,(? 'expr) . ,(? 'rest))
            (lambda (expr rest)
              (parse `(if ,expr (and ,@rest) #f))))
           (pattern-rule
@@ -452,7 +452,9 @@
   (string-append
    "#include <stdio.h>" nl
    "#include <stdlib.h>" nl
+   "#define DO_SHOW 2" nl
    "#include \"arch/cisc.h\"" nl
+   "#include \"arch/info.h\"" nl
    "" nl
    "int main()" nl
    "{" nl
@@ -467,10 +469,10 @@
    "#include \"arch/scheme.lib\"" nl
    nl
    label-not-proc":" nl
-   "JUMP("label-end-program");" nl
+   "  JUMP("label-end-program");" nl
    "CONTINUE:" nl
-   "/* definitions of some basic scheme objects */" nl
-   "/* this might be replaced later when symbols are properly implemented */" nl
+   "  /* definitions of some basic scheme objects */" nl
+   "  /* this might be replaced later when symbols are properly implemented */" nl
    nl
    "  /* allocating 1000 memory cells */" nl
    "  ADD(IND(0), IMM(1000));" nl 
@@ -539,21 +541,21 @@
           (lambda (const c)
             (cond
              ((eq? c #f) (string-append
-                          "/* #f */" nl
-                          "MOV(R0, SOB_FALSE);" nl
-                          "/* end of #f */" nl))
+                          "  /* #f */" nl
+                          "  MOV(R0, SOB_FALSE);" nl
+                          "  /* end of #f */" nl))
              ((eq? c #t) (string-append
-                          "/* #t */" nl
-                          "MOV(R0, SOB_TRUE);" nl
-                          "/* end of #t */" nl))
+                          "  /* #t */" nl
+                          "  MOV(R0, SOB_TRUE);" nl
+                          "  /* end of #t */" nl))
              ((eq? c *void-object*) (string-append
-                                     "/* #<void> */" nl
-                                     "MOV(R0, SOB_VOID);" nl
-                                     "/* end of #<void> */" nl))
+                                     "  /* #<void> */" nl
+                                     "  MOV(R0, SOB_VOID);" nl
+                                     "  /* end of #<void> */" nl))
              ((eq? c '()) (string-append
-                           "/* '() (empty list) */" nl
-                           "MOV(R0, SOB_NIL);" nl
-                           "/* end of '() */" nl))
+                           "  /* '() (empty list) */" nl
+                           "  MOV(R0, SOB_NIL);" nl
+                           "  /* end of '() */" nl))
              )))))
 
 (define ^label-orexit (^^label "Lor_exit"))
@@ -575,11 +577,11 @@
                                first-pes)))
                   (last-pe-code (code-gen last-pe env-size param-size)))
               (string-append
-               "/* or */" nl
+               "  /* or */" nl
                first-pes-code
                last-pe-code
                label-exit ":"
-               "/* end of or*/" 
+               "  /* end of or*/" 
                nl))))))
                   
 (define pe-if3?
@@ -598,7 +600,7 @@
                   (label-else (^label-if3else))
                   (label-exit (^label-if3exit)))
               (string-append
-               "/* if3 */"
+               "  /* if3 */"
                code-test nl ; when run, the result of the test will be in R0
                "  CMP(R0, SOB_FALSE);" nl
                "  JUMP_EQ(" label-else ");" nl
@@ -607,7 +609,7 @@
                label-else ":" nl
                code-dif nl
                label-exit ":" nl
-               "/* end of if3 */"
+               "  /* end of if3 */"
                nl))))))
 
 (define pe-lambda-simple?
@@ -633,7 +635,7 @@
                "  /* end of memory allocation. The result is in R1 */" nl
                "  MOV(R2,FPARG(0)); //pointer to previous env is in R2" nl
                "  /* Copying old env to new env location. R1 points to the new env, R2 to the old */" nl
-               "  for (i=0, j=1; i < IMM("(number->string env-size)"); ++i, ++j)" nl
+               "  for (i=0, j=1; i < IMM("(number->string env-size)"); i++, j++)" nl
                "  {" nl;
                "    MOV(INDD(R1,j), INDD(R2,i));" nl
                "  }" nl
@@ -644,7 +646,7 @@
                "  MOV(R3, R0);" nl
                "  /* done allocating memory. The address is in R3 */" nl
                "  /* Copying old params to the new environment (they turn from pvars to bvars)*/" nl
-               "  for (i=0; i < IMM("param-size-str"); ++i)" nl
+               "  for (i=0; i < IMM("param-size-str"); i++)" nl
                "  {" nl
                "    /* The following 3 lines: r3[i] = FPARG(2+i). Note that FPARG(2+i) holds the i-th argument to the surrounding lambda */" nl
                "    MOV(R4,IMM(2));" nl
@@ -652,7 +654,7 @@
                "    MOV(INDD(R3,i),FPARG(R4));" nl
                "  }" nl
                "  /* Done copying old params to new environment */" nl
-               "  MOV(INDD(R1,0), R3); //R0[0] now points to the first row in the new expanded environment" nl
+               "  MOV(INDD(R1,0), R3); //R1[0] now points to the first row in the new expanded environment" nl
                nl
                "  /* Create the closure object */" nl
                "  PUSH(IMM(3));" nl
@@ -661,10 +663,10 @@
                "  MOV(INDD(R0,IMM(1)), R1); //Pointer to the environment" nl
                "  MOV(INDD(R0,IMM(2)), &&"label-code"); //Pointer to the body code of the procedure" nl
                "  /* Done creating the closure object */" nl
-               "  DROP(IMM(3)); /* Remove all the PUSH operations done for the closure creation */" nl
+               "  DROP(IMM(3)); /* Remove all the PUSH operations done for the closure creation. THIS LINE FIXED A MAJOR BUG */" nl  ;;THIS WAS A MAJOR BUG FIX THAT TOOK ME SEVERAL HOURS TO FIND
                "  JUMP("label-exit");" nl
                nl
-               label-code ":" nl
+               label-code":" nl
                "  PUSH(FP);" nl
                "  MOV(FP,SP);" nl
                "  /* code-gen of the lambda body */" nl
@@ -672,7 +674,7 @@
                "  /* end of code-gen for lambda body */" nl
                "  POP(FP);" nl
                "  RETURN;" nl
-               label-exit ":" nl))))))
+               label-exit":" nl))))))
 
 (define pe-pvar?
   (lambda (pe)
@@ -700,7 +702,7 @@
             (string-append
              "  /* bvar */" nl
              "  MOV(R0, FPARG(IMM(0))); /* env */" nl
-             "  MOV(R0, INDD(RO,"(number->string major)")); /* major */" nl
+             "  MOV(R0, INDD(R0,"(number->string major)")); /* major */" nl
              "  MOV(R0, INDD(R0,"(number->string minor)")); /* value */" nl
              "  /* end of bvar */" nl
              )))))
@@ -727,16 +729,55 @@
                (code-gen proc env-size param-size)
                "  CMP(IND(R0), T_CLOSURE);" nl 
                "  JUMP_NE("label-not-proc");" nl
-               "  PUSH(INDD(R0,IMM(1)))" nl
-               "  CALLA(INDD(R0,IMM(2)))" nl
-               "  MOV(R1, IMM(0));" nl
-               "  ADD(R1, STARG(IMM(0)));" nl
+               "  PUSH(INDD(R0,IMM(1)));" nl
+               "  CALLA(INDD(R0,IMM(2)));" nl
+               "  MOV(R1, STARG(IMM(0)));" nl
                "  ADD(R1, IMM(2));" nl
                "  DROP(R1);" nl
                " /* end of applic */" nl
                ))))))
 
-       
+(define pe-tc-applic?
+  (lambda (pe)
+    (and (list? pe) (eq? (car pe) 'tc-applic))))
+
+(define code-gen-tc-applic
+  (lambda (e env-size param-size)
+    (with e
+          (lambda (tc-applic proc args)
+            (let ((args-num-string (number->string (length args))))
+              (string-append
+               "  /* tc-applic */" nl
+               "  /* Pushing arguments */" nl
+               (apply string-append (map
+                                     (lambda (arg)
+                                       (string-append
+                                        (code-gen arg env-size param-size)
+                                        "  PUSH(R0);" nl
+                                        ))
+                                     (reverse args)))
+               "  /* Done pushing arguments */" nl
+               "  PUSH(IMM("args-num-string")); //Pushing the number of arguments" nl
+               (code-gen proc env-size param-size)
+               "  CMP(INDD(R0,IMM(0)),T_CLOSURE); //Make sure we got a closure" nl
+               "  JUMP_NE("label-not-proc");" nl
+               "  PUSH(INDD(R0,IMM(1))); //Push the environment onto the stack" nl
+               "  PUSH(FPARG(-1)); //Push the return address from current frame (the same return address!)" nl
+               "  MOV(FP,FPARG(IMM(-2))); //Restore old FP in preperation for JUMP" nl
+               "  MOV(R1,FP);"  nl
+               "  /* Loop to overwrite the old frame */" nl
+               "  for (i=0; i<"args-num-string"+4; i++)" nl
+               "  {" nl
+               "    MOV(STACK(IMM(R1)), STARG("args-num-string"+2-i));" nl
+               "    INFO;" nl
+               "    ADD(R1,IMM(1));" nl
+               "  }" nl
+               "  MOV(SP,IMM(R1));" nl
+               "  CALLA(INDD(R0,IMM(2))); //Jump to procedure code" nl
+               ))))))
+               
+               
+
 (define code-gen
   (lambda (pe env-size param-size)
     (cond
@@ -748,6 +789,7 @@
      ((pe-if3? pe) (code-gen-if3 pe env-size param-size))
      ((pe-lambda-simple? pe) (code-gen-lambda-simple pe env-size param-size))
      ((pe-applic? pe) (code-gen-applic pe env-size param-size))
+     ((pe-tc-applic? pe) (code-gen-tc-applic pe env-size param-size))
      (else (void))))) ;TODO: This needs to be replaced with an error message
 
 (define write-to-file
@@ -777,6 +819,6 @@
                                     (string-append
                                      (code-gen x 0 0)
                                      epilogue-sexpr))
-                                  (map (lambda (expr) (pe->lex-pe (parse expr)))sexprs))))
+                                  (map (lambda (expr) (annotate-tc (pe->lex-pe (parse expr)))) sexprs))))
            (complete-code (string-append prologue output-code epilogue)))
       (write-to-file target complete-code))))
