@@ -852,6 +852,21 @@
                ))))))
                
                
+(define pe-fvar?
+  (lambda (pe)
+    (and (list? pe) (eq? (car pe) 'fvar))))
+
+(define code-gen-fvar
+  (lambda (pe env-size param-size)
+    (with pe
+          (lambda (fvar name)
+            (cond
+             ((eq? name 'cons)
+              (string-append
+               "  /* (fvar cons) */" nl
+               "  MOV(R0, PRIM_CONS);" nl
+               "  /* end of (fvar cons) */;" nl
+               )))))))
 
 (define code-gen
   (lambda (pe env-size param-size)
@@ -865,6 +880,7 @@
      ((pe-lambda-simple? pe) (code-gen-lambda-simple pe env-size param-size))
      ((pe-applic? pe) (code-gen-applic pe env-size param-size))
      ((pe-tc-applic? pe) (code-gen-tc-applic pe env-size param-size))
+     ((pe-fvar? pe) (code-gen-fvar pe env-size param-size))
      (else (void))))) ;TODO: This needs to be replaced with an error message
 
 (define write-to-file
