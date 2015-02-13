@@ -4,7 +4,6 @@
 (print-gensym #f) ; print gensym as g1234
 (case-sensitive #f) ; ditto
 (print-brackets #f) ; do not use brackets when pretty-printing
-
 (revert-interaction-semantics) ; allow builtins to be redefined
 
 ;;; fix bug in optimizer
@@ -475,24 +474,24 @@
    "  /* this might be replaced later when symbols are properly implemented */" nl
    nl
    "  /* allocating 1000 memory cells */" nl
-   "  ADD(IND(0), IMM(1000));" nl 
+   "  ADD(IND(0), 1000);" nl 
    nl
    "  /* Void object definition */" nl
-   "  MOV(IND(1), IMM(T_VOID));" nl
+   "  MOV(IND(1), T_VOID);" nl
    "  #define SOB_VOID 1" nl
    nl
    "  /* Null (empty list) definition */" nl
-   "  MOV(IND(2), IMM(T_NIL));" nl 
+   "  MOV(IND(2), T_NIL);" nl 
    "  #define SOB_NIL 2" nl 
    nl
    "  /* #f definition */" nl
-   "  MOV(IND(3), IMM(T_BOOL))" nl
-   "  MOV(IND(4), IMM(0))" nl
+   "  MOV(IND(3), T_BOOL);" nl
+   "  MOV(IND(4), 0);" nl
    "  #define SOB_FALSE 3" nl 
    nl
    "  /* #t definition */" nl
-   "  MOV(IND(5), IMM(T_BOOL))" nl
-   "  MOV(IND(6), IMM(1))" nl
+   "  MOV(IND(5), T_BOOL);" nl
+   "  MOV(IND(6), 1);" nl
    "  #define SOB_TRUE 5" nl
    ))
 
@@ -572,7 +571,7 @@
                           (map (lambda (e)
                                  (string-append
                                   (code-gen e env-size param-size)
-                                  "  CMP(R0, IMM(SOB_FALSE));" nl
+                                  "  CMP(R0, SOB_FALSE);" nl
                                   "  JUMP_NE(" label-exit ");" nl))
                                first-pes)))
                   (last-pe-code (code-gen last-pe env-size param-size)))
@@ -620,6 +619,7 @@
 (define ^label-lambda-exit (^^label "Llambdaexit"))
 (define ^label-loop (^^label "Lloop"))
 (define ^label-end-loop (^^label "Lendloop"))
+(define ^label-copy-param (^^label "Lcopyparam"))
 (define code-gen-lambda-simple
   (lambda (e env-size param-size)
     (with e
@@ -631,24 +631,27 @@
                   (label-loop1 (^label-loop))
                   (label-endloop1 (^label-end-loop))
                   (label-loop2 (^label-loop))
-                  (label-endloop2 (^label-end-loop)))
+                  (label-endloop2 (^label-end-loop))
+                  (label-copyparam (^label-copy-param)))
               (string-append
                "  /* lambda-simple */" nl
                "  /* allocating memory for new environment */" nl
-               "  PUSH(IMM("new-env-size-str"));" nl
+               "  PUSH("new-env-size-str");" nl
                "  CALL(MALLOC);" nl
                "  MOV(R1,R0);" nl
                "  /* end of memory allocation. The result is in R1 */" nl
+               "  CMP(FP,2);" nl
+               "  JUMP_LE("label-copyparam");" nl
                "  MOV(R2,FPARG(0)); //pointer to previous env is in R2" nl
                "  /* Copying old env to new env location. R1 points to the new env, R2 to the old */" nl
-               "  MOV(R3, IMM(0)); //loop counter" nl
-               "  MOV(R4, IMM(1)); //index into new env" nl
+               "  MOV(R3, 0); //loop counter" nl
+               "  MOV(R4, 1); //index into new env" nl
                label-loop1":" nl
-               "  CMP(IMM(R3), IMM("(number->string env-size)")); //loop condition" nl
+               "  CMP(R3, "(number->string env-size)"); //loop condition" nl
                "  JUMP_GE("label-endloop1");" nl
-               "  MOV(INDD(R1,IMM(R4)), INDD(R2,IMM(R3)));" nl
-               "  ADD(R3, IMM(1));" nl
-               "  ADD(R4, IMM(1));" nl
+               "  MOV(INDD(R1,R4), INDD(R2,R3));" nl
+               "  ADD(R3, 1);" nl
+               "  ADD(R4, 1);" nl
                "  JUMP("label-loop1");" nl
                label-endloop1":" nl
                ;"  for (i=0, j=1; i < IMM("(number->string env-size)"); i++, j++)" nl
@@ -656,21 +659,22 @@
                ;"    MOV(INDD(R1,j), INDD(R2,i));" nl
                ;"  }" nl
                "  /* done copying old env to new env location. Note that R1[0] is reserved for the environment expansion (not part of the old env) */" nl
+               label-copyparam":" nl
                "  /* allocating memory for a new row in the new environment array (will be pointer from R0[0]) */" nl
-               "  PUSH(IMM("param-size-str"));" nl
+               "  PUSH("param-size-str");" nl
                "  CALL(MALLOC);" nl
                "  MOV(R3, R0);" nl
                "  /* done allocating memory. The address is in R3 */" nl
                "  /* Copying old params to the new environment (they turn from pvars to bvars)*/" nl
                "  MOV(R5,0); //loop counter" nl
                label-loop2":" nl
-               "  CMP(IMM(R5),IMM("param-size-str")); //loop condition" nl
+               "  CMP(R5,"param-size-str"); //loop condition" nl
                "  JUMP_GE("label-endloop2");" nl
                ;  /* The following 3 lines: r3[i] = FPARG(2+i). Note that FPARG(2+i) holds the i-th argument to the surrounding lambda */" nl
-               "  MOV(R4,IMM(2));" nl
-               "  ADD(R4,IMM(R5));" nl
-               "  MOV(INDD(R3,IMM(R5)),FPARG(R4));" nl
-               "  ADD(R5,IMM(1));" nl
+               "  MOV(R4,2);" nl
+               "  ADD(R4,R5);" nl
+               "  MOV(INDD(R3,R5),FPARG(R4));" nl
+               "  ADD(R5,1);" nl
                "  JUMP("label-loop2");" nl
                label-endloop2":" nl  
                ;"  for (i=0; i < IMM("param-size-str"); i++)" nl
@@ -684,13 +688,13 @@
                "  MOV(INDD(R1,0), R3); //R1[0] now points to the first row in the new expanded environment" nl
                nl
                "  /* Create the closure object */" nl
-               "  PUSH(IMM(3));" nl
+               "  PUSH(3);" nl
                "  CALL(MALLOC);" nl
-               "  MOV(INDD(R0,IMM(0)), T_CLOSURE); //Type of the object" nl
-               "  MOV(INDD(R0,IMM(1)), R1); //Pointer to the environment" nl
-               "  MOV(INDD(R0,IMM(2)), &&"label-code"); //Pointer to the body code of the procedure" nl
+               "  MOV(INDD(R0,0), T_CLOSURE); //Type of the object" nl
+               "  MOV(INDD(R0,1), R1); //Pointer to the environment" nl
+               "  MOV(INDD(R0,2), LABEL("label-code")); //Pointer to the body code of the procedure" nl
                "  /* Done creating the closure object */" nl
-               "  DROP(IMM(3)); /* Remove all the PUSH operations done for the closure creation. THIS LINE FIXED A MAJOR BUG */" nl  ;;THIS WAS A MAJOR BUG FIX THAT TOOK ME SEVERAL HOURS TO FIND
+               "  DROP(3); /* Remove all the PUSH operations done for the closure creation. THIS LINE FIXED A MAJOR BUG */" nl  ;;THIS WAS A MAJOR BUG FIX THAT TOOK ME SEVERAL HOURS TO FIND
                "  JUMP("label-exit");" nl
                nl
                label-code":" nl
@@ -718,7 +722,7 @@
             (let ((minor-in-stack-str (number->string (+ minor 2))))
               (string-append
                "  /* pvar */" nl
-               "  MOV(R0, FPARG(IMM("minor-in-stack-str")));" nl
+               "  MOV(R0, FPARG("minor-in-stack-str"));" nl
                "  /* end of pvar */" nl
                ))))))
 
@@ -728,7 +732,7 @@
           (lambda (bvar var major minor)
             (string-append
              "  /* bvar */" nl
-             "  MOV(R0, FPARG(IMM(0))); /* env */" nl
+             "  MOV(R0, FPARG(0)); /* env */" nl
              "  MOV(R0, INDD(R0,"(number->string major)")); /* major */" nl
              "  MOV(R0, INDD(R0,"(number->string minor)")); /* value */" nl
              "  /* end of bvar */" nl
@@ -752,14 +756,14 @@
                                         (code-gen arg env-size param-size)
                                         "  PUSH(R0);" nl))
                                      (reverse args)))
-               "  PUSH(IMM("args-num-string"))" nl
+               "  PUSH("args-num-string")" nl
                (code-gen proc env-size param-size)
                "  CMP(IND(R0), T_CLOSURE);" nl 
                "  JUMP_NE("label-not-proc");" nl
-               "  PUSH(INDD(R0,IMM(1)));" nl
-               "  CALLA(INDD(R0,IMM(2)));" nl
-               "  MOV(R1, STARG(IMM(0)));" nl
-               "  ADD(R1, IMM(2));" nl
+               "  PUSH(INDD(R0,1));" nl
+               "  CALLA(INDD(R0,2));" nl
+               "  MOV(R1, STARG(0));" nl
+               "  ADD(R1, 2);" nl
                "  DROP(R1);" nl
                " /* end of applic */" nl
                ))))))
@@ -773,7 +777,7 @@
     (with e
           (lambda (tc-applic proc args)
             (let ((args-num-string (number->string (length args)))
-                  (frame-copy-steps (number->string (+ (length args) 4)))
+                  (frame-copy-steps (number->string (+ (length args) 3)))
                   (label-loop (^label-loop))
                   (label-endloop (^label-end-loop)))
               (string-append
@@ -787,37 +791,43 @@
                                         ))
                                      (reverse args)))
                "  /* Done pushing arguments */" nl
-               "  PUSH(IMM("args-num-string")); //Pushing the number of arguments" nl
+               "  PUSH("args-num-string"); //Pushing the number of arguments" nl
                (code-gen proc env-size param-size)
-               "  CMP(INDD(R0,IMM(0)),T_CLOSURE); //Make sure we got a closure" nl
+               "  CMP(INDD(R0,0),T_CLOSURE); //Make sure we got a closure" nl
                "  JUMP_NE("label-not-proc");" nl
-               "  PUSH(INDD(R0,IMM(1))); //Push the environment onto the stack" nl
+               "  PUSH(INDD(R0,1)); //Push the environment onto the stack" nl
                "  PUSH(FPARG(-1)); //Push the return address from current frame (the same return address!)" nl
-               "  MOV(FP,FPARG(IMM(-2))); //Restore old FP in preperation for JUMP" nl
-               "  MOV(R1,FP);"  nl
+               "  MOV(R2, FPARG(1)); //n" nl
+               "  ADD(R2,"args-num-string");" nl
+               "  ADD(R2,7);" nl
+               "  MOV(R3,SP);" nl
+               "  SUB(R3,R2);" nl
+               "  MOV(FP,FPARG(-2)); //Restore old FP in preperation for JUMP" nl
                "  /* Loop to overwrite the old frame */" nl
-               "  MOV(R2, IMM(0)); //loop counter" nl
-               "  MOV(R3, IMM(2));" nl
-               "  ADD(R3, IMM("args-num-string"));" nl
-               label-loop":" nl
-               "  CMP(IMM(R2),IMM("frame-copy-steps")); //loop condition" nl
-               "  JUMP_GE("label-endloop");" nl
-               "  MOV(STACK(IMM(R1)), STARG(IMM(R3)));" nl
-               "  INFO;" nl
-               "  ADD(R1,IMM(1));" nl
-               "  ADD(R2,IMM(1)); //incrementing loop counter" nl 
-               "  SUB(R3, IMM(1));" nl
-               "  JUMP("label-loop");" nl
-               label-endloop":" nl
+               ;"  MOV(R2, 0); //loop counter" nl
+               ;"  MOV(R3, "args-num-string");" nl
+               ;"  ADD(R3, 1);" nl
+               ;label-loop":" nl
+               ;"  CMP(R2,"frame-copy-steps"); //loop condition" nl
+               ;"  JUMP_GE("label-endloop");" nl
+               ;"  MOV(STACK(R1), STARG(R3));" nl
+               ;"  ADD(R2,1); //incrementing loop counter" nl 
+               ;"  ADD(R1,1);" nl
+               ;"  MOV(R3, "args-num-string");" nl
+               ;"  ADD(R3, 1);" nl
+               ;"  SUB(R3, R2);" nl
+               ;"  JUMP("label-loop");" nl
+               ;label-endloop":" nl
+               "  MOV(R1,FP);"  nl
                "  /* End of loop to overwrite old frame */" nl
-               ;"  for (i=0; i<"args-num-string"+4; i++)" nl
-               ;"  {" nl
-               ;"    MOV(STACK(IMM(R1)), STARG("args-num-string"+2-i));" nl
-               ;"    INFO;" nl
-               ;"    ADD(R1,IMM(1));" nl
-               ;"  }" nl
-               "  MOV(SP,IMM(R1));" nl
-               "  CALLA(INDD(R0,IMM(2))); //Jump to procedure code" nl
+               "  for (i=0; i<"args-num-string"+3; i++)" nl
+               "  {" nl
+               "    MOV(STACK(R3), STARG("args-num-string"+1-i));" nl
+               "    ADD(R3,1);" nl
+               "  }" nl
+               "  MOV(SP,R3);" nl
+               "  JUMPA(INDD(R0,2));" nl
+               ;"  CALLA(INDD(R0,2)); //Jump to procedure code" nl
                ))))))
                
                
@@ -863,6 +873,6 @@
                                     (string-append
                                      (code-gen x 0 0)
                                      epilogue-sexpr))
-                                  (map (lambda (expr) (pe->lex-pe (parse expr))) sexprs))))
+                                  (map (lambda (expr) (annotate-tc (pe->lex-pe (parse expr)))) sexprs))))
            (complete-code (string-append prologue output-code epilogue)))
       (write-to-file target complete-code))))
