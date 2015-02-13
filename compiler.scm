@@ -447,53 +447,74 @@
 (define label-not-proc "Lnot_proc")
 (define label-end-program "Lend")
 
+(define label-cons-code "L_Prim_cons")
+(define ^label-cont (^^label "L_cont_"))
 (define prologue
-  (string-append
-   "#include <stdio.h>" nl
-   "#include <stdlib.h>" nl
-   "#define DO_SHOW 2" nl
-   "#include \"arch/cisc.h\"" nl
-   "#include \"arch/info.h\"" nl
-   "" nl
-   "int main()" nl
-   "{" nl
-   "  int i,j;" nl ;Declared here because otherwise there could be multiple declerations in a file
-   "  START_MACHINE;" nl
-   "  JUMP(CONTINUE);" nl
-   "#include \"arch/char.lib\"" nl
-   "#include \"arch/io.lib\"" nl
-   "#include \"arch/math.lib\"" nl
-   "#include \"arch/string.lib\"" nl
-   "#include \"arch/system.lib\"" nl
-   "#include \"arch/scheme.lib\"" nl
-   nl
-   label-not-proc":" nl
-   "  JUMP("label-end-program");" nl
-   "CONTINUE:" nl
-   "  /* definitions of some basic scheme objects */" nl
-   "  /* this might be replaced later when symbols are properly implemented */" nl
-   nl
-   "  /* allocating 1000 memory cells */" nl
-   "  ADD(IND(0), 1000);" nl 
-   nl
-   "  /* Void object definition */" nl
-   "  MOV(IND(1), T_VOID);" nl
-   "  #define SOB_VOID 1" nl
-   nl
-   "  /* Null (empty list) definition */" nl
-   "  MOV(IND(2), T_NIL);" nl 
-   "  #define SOB_NIL 2" nl 
-   nl
-   "  /* #f definition */" nl
-   "  MOV(IND(3), T_BOOL);" nl
-   "  MOV(IND(4), 0);" nl
-   "  #define SOB_FALSE 3" nl 
-   nl
-   "  /* #t definition */" nl
-   "  MOV(IND(5), T_BOOL);" nl
-   "  MOV(IND(6), 1);" nl
-   "  #define SOB_TRUE 5" nl
-   ))
+  (let ((label-cont (^label-cont)))
+    (string-append
+     "#include <stdio.h>" nl
+     "#include <stdlib.h>" nl
+     "#define DO_SHOW 2" nl
+     "#include \"arch/cisc.h\"" nl
+     "#include \"arch/info.h\"" nl
+     "" nl
+     "int main()" nl
+     "{" nl
+     "  int i,j;" nl ;Declared here because otherwise there could be multiple declerations in a file
+     "  START_MACHINE;" nl
+     "  JUMP(CONTINUE);" nl
+     "#include \"arch/char.lib\"" nl
+     "#include \"arch/io.lib\"" nl
+     "#include \"arch/math.lib\"" nl
+     "#include \"arch/string.lib\"" nl
+     "#include \"arch/system.lib\"" nl
+     "#include \"arch/scheme.lib\"" nl
+     nl
+     label-not-proc":" nl
+     "  JUMP("label-end-program");" nl
+     "CONTINUE:" nl
+     "  /* definitions of some basic scheme objects */" nl
+     "  /* this might be replaced later when symbols are properly implemented */" nl
+     nl
+     "  /* allocating 1000 memory cells */" nl
+     "  ADD(IND(0), 1000);" nl 
+     nl
+     "  /* Void object definition */" nl
+     "  MOV(IND(1), T_VOID);" nl
+     "  #define SOB_VOID 1" nl
+     nl
+     "  /* Null (empty list) definition */" nl
+     "  MOV(IND(2), T_NIL);" nl 
+     "  #define SOB_NIL 2" nl 
+     nl
+     "  /* #f definition */" nl
+     "  MOV(IND(3), T_BOOL);" nl
+     "  MOV(IND(4), 0);" nl
+     "  #define SOB_FALSE 3" nl 
+     nl
+     "  /* #t definition */" nl
+     "  MOV(IND(5), T_BOOL);" nl
+     "  MOV(IND(6), 1);" nl
+     "  #define SOB_TRUE 5" nl
+     nl
+     "  /* cons code and definition */" nl
+     "  JUMP("label-cont"); //skipping over the actual (cons) execution, because we only want to define it" nl
+     label-cons-code":" nl
+     "  PUSH(FP);" nl
+     "  MOV(FP,SP);"  nl
+     "  PUSH(FPARG(3)); //The cdr" nl
+     "  PUSH(FPARG(2)); //The car" nl
+     "  CALL(MAKE_SOB_PAIR);" nl
+     "  DROP(2);" nl
+     "  POP(FP);" nl
+     "  RETURN;" nl
+     label-cont":" nl
+     "  MOV(IND(10), T_CLOSURE); //type" nl
+     "  MOV(IND(11), 308618859); //env (there is no env when calling cons, so this is just a random number [my id])" nl
+     "  MOV(IND(12), LABEL("label-cons-code")); //code address" nl
+     "  #define PRIM_CONS 10" nl
+     "  /* end of cons code and definition */" nl
+   )))
 
 (define epilogue
   (string-append
