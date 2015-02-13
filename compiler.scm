@@ -641,92 +641,101 @@
 (define ^label-loop (^^label "Lloop"))
 (define ^label-end-loop (^^label "Lendloop"))
 (define ^label-copy-param (^^label "Lcopyparam"))
-(define code-gen-lambda-simple
-  (lambda (e env-size param-size)
-    (with e
-          (lambda (lambda-simple params body)
-            (let ((new-env-size-str (number->string (+ env-size 1)))
-                  (param-size-str (number->string param-size))
-                  (label-code (^label-lambda-code))
-                  (label-exit (^label-lambda-exit))
-                  (label-loop1 (^label-loop))
-                  (label-endloop1 (^label-end-loop))
-                  (label-loop2 (^label-loop))
-                  (label-endloop2 (^label-end-loop))
-                  (label-copyparam (^label-copy-param)))
-              (string-append
-               "  /* lambda-simple */" nl
-               "  /* allocating memory for new environment */" nl
-               "  PUSH("new-env-size-str");" nl
-               "  CALL(MALLOC);" nl
-               "  MOV(R1,R0);" nl
-               "  /* end of memory allocation. The result is in R1 */" nl
-               "  CMP(FP,2);" nl
-               "  JUMP_LE("label-copyparam");" nl
-               "  MOV(R2,FPARG(0)); //pointer to previous env is in R2" nl
-               "  /* Copying old env to new env location. R1 points to the new env, R2 to the old */" nl
-               "  MOV(R3, 0); //loop counter" nl
-               "  MOV(R4, 1); //index into new env" nl
-               label-loop1":" nl
-               "  CMP(R3, "(number->string env-size)"); //loop condition" nl
-               "  JUMP_GE("label-endloop1");" nl
-               "  MOV(INDD(R1,R4), INDD(R2,R3));" nl
-               "  ADD(R3, 1);" nl
-               "  ADD(R4, 1);" nl
-               "  JUMP("label-loop1");" nl
-               label-endloop1":" nl
-               ;"  for (i=0, j=1; i < IMM("(number->string env-size)"); i++, j++)" nl
-               ;"  {" nl;
-               ;"    MOV(INDD(R1,j), INDD(R2,i));" nl
-               ;"  }" nl
-               "  /* done copying old env to new env location. Note that R1[0] is reserved for the environment expansion (not part of the old env) */" nl
-               label-copyparam":" nl
-               "  /* allocating memory for a new row in the new environment array (will be pointer from R0[0]) */" nl
-               "  PUSH("param-size-str");" nl
-               "  CALL(MALLOC);" nl
-               "  MOV(R3, R0);" nl
-               "  /* done allocating memory. The address is in R3 */" nl
-               "  /* Copying old params to the new environment (they turn from pvars to bvars)*/" nl
-               "  MOV(R5,0); //loop counter" nl
-               label-loop2":" nl
-               "  CMP(R5,"param-size-str"); //loop condition" nl
-               "  JUMP_GE("label-endloop2");" nl
-               ;  /* The following 3 lines: r3[i] = FPARG(2+i). Note that FPARG(2+i) holds the i-th argument to the surrounding lambda */" nl
-               "  MOV(R4,2);" nl
-               "  ADD(R4,R5);" nl
-               "  MOV(INDD(R3,R5),FPARG(R4));" nl
-               "  ADD(R5,1);" nl
-               "  JUMP("label-loop2");" nl
-               label-endloop2":" nl  
-               ;"  for (i=0; i < IMM("param-size-str"); i++)" nl
-               ;"  {" nl
-               ;"    /* The following 3 lines: r3[i] = FPARG(2+i). Note that FPARG(2+i) holds the i-th argument to the surrounding lambda */" nl
-               ;"    MOV(R4,IMM(2));" nl
-               ;"    ADD(R4,IMM(i));" nl
-               ;"    MOV(INDD(R3,i),FPARG(R4));" nl
-               ;"  }" nl
-               "  /* Done copying old params to new environment */" nl
-               "  MOV(INDD(R1,0), R3); //R1[0] now points to the first row in the new expanded environment" nl
-               nl
-               "  /* Create the closure object */" nl
-               "  PUSH(3);" nl
-               "  CALL(MALLOC);" nl
-               "  MOV(INDD(R0,0), T_CLOSURE); //Type of the object" nl
-               "  MOV(INDD(R0,1), R1); //Pointer to the environment" nl
-               "  MOV(INDD(R0,2), LABEL("label-code")); //Pointer to the body code of the procedure" nl
-               "  /* Done creating the closure object */" nl
-               "  DROP(3); /* Remove all the PUSH operations done for the closure creation. THIS LINE FIXED A MAJOR BUG */" nl  ;;THIS WAS A MAJOR BUG FIX THAT TOOK ME SEVERAL HOURS TO FIND
-               "  JUMP("label-exit");" nl
-               nl
-               label-code":" nl
-               "  PUSH(FP);" nl
-               "  MOV(FP,SP);" nl
-               "  /* code-gen of the lambda body */" nl
-               (code-gen body (+ env-size 1) (length params))
-               "  /* end of code-gen for lambda body */" nl
-               "  POP(FP);" nl
-               "  RETURN;" nl
-               label-exit":" nl))))))
+
+(define ^code-gen-lambda
+  (lambda (type)
+    (lambda (e env-size param-size)
+      (let ((params (cadr e))
+            (body (get-last e))
+            (new-env-size-str (number->string (+ env-size 1)))
+            (param-size-str (number->string param-size))
+            (label-code (^label-lambda-code))
+            (label-exit (^label-lambda-exit))
+            (label-loop1 (^label-loop))
+            (label-endloop1 (^label-end-loop))
+            (label-loop2 (^label-loop))
+            (label-endloop2 (^label-end-loop))
+            (label-copyparam (^label-copy-param)))
+        (string-append
+         "  /* lambda-simple */" nl
+         "  /* allocating memory for new environment */" nl
+         "  PUSH("new-env-size-str");" nl
+         "  CALL(MALLOC);" nl
+         "  MOV(R1,R0);" nl
+         "  /* end of memory allocation. The result is in R1 */" nl
+         "  CMP(FP,2);" nl
+         "  JUMP_LE("label-copyparam");" nl
+         "  MOV(R2,FPARG(0)); //pointer to previous env is in R2" nl
+         "  /* Copying old env to new env location. R1 points to the new env, R2 to the old */" nl
+         "  MOV(R3, 0); //loop counter" nl
+         "  MOV(R4, 1); //index into new env" nl
+         label-loop1":" nl
+         "  CMP(R3, "(number->string env-size)"); //loop condition" nl
+         "  JUMP_GE("label-endloop1");" nl
+         "  MOV(INDD(R1,R4), INDD(R2,R3));" nl
+         "  ADD(R3, 1);" nl
+         "  ADD(R4, 1);" nl
+         "  JUMP("label-loop1");" nl
+         label-endloop1":" nl
+                                        ;"  for (i=0, j=1; i < IMM("(number->string env-size)"); i++, j++)" nl
+                                        ;"  {" nl;
+                                        ;"    MOV(INDD(R1,j), INDD(R2,i));" nl
+                                        ;"  }" nl
+         "  /* done copying old env to new env location. Note that R1[0] is reserved for the environment expansion (not part of the old env) */" nl
+         label-copyparam":" nl
+         "  /* allocating memory for a new row in the new environment array (will be pointer from R0[0]) */" nl
+         "  PUSH("param-size-str");" nl
+         "  CALL(MALLOC);" nl
+         "  MOV(R3, R0);" nl
+         "  /* done allocating memory. The address is in R3 */" nl
+         "  /* Copying old params to the new environment (they turn from pvars to bvars)*/" nl
+         "  MOV(R5,0); //loop counter" nl
+         label-loop2":" nl
+         "  CMP(R5,"param-size-str"); //loop condition" nl
+         "  JUMP_GE("label-endloop2");" nl
+                                        ;  /* The following 3 lines: r3[i] = FPARG(2+i). Note that FPARG(2+i) holds the i-th argument to the surrounding lambda */" nl
+         "  MOV(R4,2);" nl
+         "  ADD(R4,R5);" nl
+         "  MOV(INDD(R3,R5),FPARG(R4));" nl
+         "  ADD(R5,1);" nl
+         "  JUMP("label-loop2");" nl
+         label-endloop2":" nl  
+                                        ;"  for (i=0; i < IMM("param-size-str"); i++)" nl
+                                        ;"  {" nl
+                                        ;"    /* The following 3 lines: r3[i] = FPARG(2+i). Note that FPARG(2+i) holds the i-th argument to the surrounding lambda */" nl
+                                        ;"    MOV(R4,IMM(2));" nl
+                                        ;"    ADD(R4,IMM(i));" nl
+                                        ;"    MOV(INDD(R3,i),FPARG(R4));" nl
+                                        ;"  }" nl
+         "  /* Done copying old params to new environment */" nl
+         "  MOV(INDD(R1,0), R3); //R1[0] now points to the first row in the new expanded environment" nl
+         nl
+         "  /* Create the closure object */" nl
+         "  PUSH(3);" nl
+         "  CALL(MALLOC);" nl
+         "  MOV(INDD(R0,0), T_CLOSURE); //Type of the object" nl
+         "  MOV(INDD(R0,1), R1); //Pointer to the environment" nl
+         "  MOV(INDD(R0,2), LABEL("label-code")); //Pointer to the body code of the procedure" nl
+         "  /* Done creating the closure object */" nl
+         "  DROP(3); /* Remove all the PUSH operations done for the closure creation. THIS LINE FIXED A MAJOR BUG */" nl  ;;THIS WAS A MAJOR BUG FIX THAT TOOK ME SEVERAL HOURS TO FIND
+         "  JUMP("label-exit");" nl
+         nl
+         label-code":" nl
+         "  PUSH(FP);" nl
+         "  MOV(FP,SP);" nl
+         (cond
+          ((eq? type 'simple) "  /* stack-correction-code-for-lambda-simple")
+          ((eq? type 'opt) "  /* stack-correction-code-for-lambda-opt */")
+          ((eq? type 'variadic) "  /* stack-correction-code-for-lambda-variadic */")
+          ("  /* error */"))
+         nl
+         "  /* code-gen of the lambda body */" nl
+         (code-gen body (+ env-size 1) (length params))
+         "  /* end of code-gen for lambda body */" nl
+         "  POP(FP);" nl
+         "  RETURN;" nl
+         label-exit":" nl)))))
+
 
 (define pe-pvar?
   (lambda (pe)
@@ -868,20 +877,34 @@
                "  /* end of (fvar cons) */;" nl
                )))))))
 
+(define pe-lambda-opt?
+  (lambda (pe)
+    (and (list? pe) (eq? car 'lambda-opt))))
+
+;(define code-gen-lambda-opt
+;  (lambda (pe env-size param-size)
+;    (with pe
+;          (lambda (lambda-opt param rest body)
+;            (
+
 (define code-gen
   (lambda (pe env-size param-size)
-    (cond
-     ((pe-pvar? pe) (code-gen-pvar pe env-size param-size)) 
-     ((pe-bvar? pe) (code-gen-bvar pe env-size param-size)) 
-     ((pe-seq? pe) (code-gen-seq pe env-size param-size))
-     ((pe-const? pe) (code-gen-const pe))
-     ((pe-or? pe) (code-gen-or pe env-size param-size))
-     ((pe-if3? pe) (code-gen-if3 pe env-size param-size))
-     ((pe-lambda-simple? pe) (code-gen-lambda-simple pe env-size param-size))
-     ((pe-applic? pe) (code-gen-applic pe env-size param-size))
-     ((pe-tc-applic? pe) (code-gen-tc-applic pe env-size param-size))
-     ((pe-fvar? pe) (code-gen-fvar pe env-size param-size))
-     (else (void))))) ;TODO: This needs to be replaced with an error message
+    (let ((code-gen-lambda-simple (^code-gen-lambda 'simple))
+          (code-gen-lambda-opt (^code-gen-lambda 'opt))
+          (code-gen-lambda-variadic (^code-gen-lambda 'variadic)))
+      (cond
+       ((pe-pvar? pe) (code-gen-pvar pe env-size param-size)) 
+       ((pe-bvar? pe) (code-gen-bvar pe env-size param-size)) 
+       ((pe-seq? pe) (code-gen-seq pe env-size param-size))
+       ((pe-const? pe) (code-gen-const pe))
+       ((pe-or? pe) (code-gen-or pe env-size param-size))
+       ((pe-if3? pe) (code-gen-if3 pe env-size param-size))
+       ((pe-lambda-simple? pe) (code-gen-lambda-simple pe env-size param-size))
+       ((pe-applic? pe) (code-gen-applic pe env-size param-size))
+       ((pe-tc-applic? pe) (code-gen-tc-applic pe env-size param-size))
+       ((pe-fvar? pe) (code-gen-fvar pe env-size param-size))
+       ((pe-lambda-opt? pe) (code-gen-lambda-opt pe env-size param-size))
+       (else (void)))))) ;TODO: This needs to be replaced with an error message
 
 (define write-to-file
   (lambda (filename string)
