@@ -677,10 +677,10 @@
          "  ADD(R4, 1);" nl
          "  JUMP("label-loop1");" nl
          label-endloop1":" nl
-                                        ;"  for (i=0, j=1; i < IMM("(number->string env-size)"); i++, j++)" nl
-                                        ;"  {" nl;
-                                        ;"    MOV(INDD(R1,j), INDD(R2,i));" nl
-                                        ;"  }" nl
+         ;"  for (i=0, j=1; i < IMM("(number->string env-size)"); i++, j++)" nl
+         ;"  {" nl;
+         ;"    MOV(INDD(R1,j), INDD(R2,i));" nl
+         ;"  }" nl
          "  /* done copying old env to new env location. Note that R1[0] is reserved for the environment expansion (not part of the old env) */" nl
          label-copyparam":" nl
          "  /* allocating memory for a new row in the new environment array (will be pointer from R0[0]) */" nl
@@ -693,20 +693,20 @@
          label-loop2":" nl
          "  CMP(R5,"param-size-str"); //loop condition" nl
          "  JUMP_GE("label-endloop2");" nl
-                                        ;  /* The following 3 lines: r3[i] = FPARG(2+i). Note that FPARG(2+i) holds the i-th argument to the surrounding lambda */" nl
+         ;  /* The following 3 lines: r3[i] = FPARG(2+i). Note that FPARG(2+i) holds the i-th argument to the surrounding lambda */" nl
          "  MOV(R4,2);" nl
          "  ADD(R4,R5);" nl
          "  MOV(INDD(R3,R5),FPARG(R4));" nl
          "  ADD(R5,1);" nl
          "  JUMP("label-loop2");" nl
          label-endloop2":" nl  
-                                        ;"  for (i=0; i < IMM("param-size-str"); i++)" nl
-                                        ;"  {" nl
-                                        ;"    /* The following 3 lines: r3[i] = FPARG(2+i). Note that FPARG(2+i) holds the i-th argument to the surrounding lambda */" nl
-                                        ;"    MOV(R4,IMM(2));" nl
-                                        ;"    ADD(R4,IMM(i));" nl
-                                        ;"    MOV(INDD(R3,i),FPARG(R4));" nl
-                                        ;"  }" nl
+         ;"  for (i=0; i < IMM("param-size-str"); i++)" nl
+         ;"  {" nl
+         ;"    /* The following 3 lines: r3[i] = FPARG(2+i). Note that FPARG(2+i) holds the i-th argument to the surrounding lambda */" nl
+         ;"    MOV(R4,IMM(2));" nl
+         ;"    ADD(R4,IMM(i));" nl
+         ;"    MOV(INDD(R3,i),FPARG(R4));" nl
+         ;"  }" nl
          "  /* Done copying old params to new environment */" nl
          "  MOV(INDD(R1,0), R3); //R1[0] now points to the first row in the new expanded environment" nl
          nl
@@ -725,12 +725,31 @@
          "  MOV(FP,SP);" nl
          (cond
           ((eq? type 'simple) "  /* stack-correction-code-for-lambda-simple")
-          ((eq? type 'opt) "  /* stack-correction-code-for-lambda-opt */")
+          ((eq? type 'opt)
+           (let ((params-length-str (number->string (length params))))
+             (string-append
+              "  /* stack-correction code for lambda-opt */" nl
+              "  MOV(R1,SOB_NIL); //R1 = '()" nl
+              "  /* Creating a list of optional arguments */" nl
+              "  MOV(R3,FPARG(1));" nl
+              "  for (i = 1+R3; i>R3-"params-length-str"; i--) {" nl
+              "    MOV(R5,i);" nl
+              "    PUSH(R1); //cdr" nl
+              "    MOV(R7,FPARG(R5));" nl
+              "    PUSH(R7); //car" nl
+              "    CALL(MAKE_SOB_PAIR);" nl
+              "    MOV(R1, R0); //put the result in R0" nl
+              "    DROP(2);" nl
+              "  }" nl
+              "  /* Finished creating the list of optional arguments */" nl
+              "  MOV(STACK(SP-5-"params-length-str"),R1); //Puting the optional arguments list after all the non-optional params" nl
+              "  /* end of stack-correction code for lambda-opt" nl
+              )))
           ((eq? type 'variadic) "  /* stack-correction-code-for-lambda-variadic */")
           ("  /* error */"))
          nl
          "  /* code-gen of the lambda body */" nl
-         (code-gen body (+ env-size 1) (length params))
+         (code-gen body (+ env-size 1) (length params));
          "  /* end of code-gen for lambda body */" nl
          "  POP(FP);" nl
          "  RETURN;" nl
@@ -879,7 +898,7 @@
 
 (define pe-lambda-opt?
   (lambda (pe)
-    (and (list? pe) (eq? car 'lambda-opt))))
+    (and (list? pe) (eq? (car pe) 'lambda-opt))))
 
 ;(define code-gen-lambda-opt
 ;  (lambda (pe env-size param-size)
