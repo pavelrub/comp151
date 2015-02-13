@@ -730,13 +730,11 @@
              (string-append
               "  /* stack-correction code for lambda-opt */" nl
               "  MOV(R1,SOB_NIL); //R1 = '()" nl
+              "  MOV(R1,FPARG(1+FPARG(1)));" nl
               "  /* Creating a list of optional arguments */" nl
-              "  MOV(R3,FPARG(1));" nl
-              "  for (i = 1+R3; i>R3-"params-length-str"; i--) {" nl
-              "    MOV(R5,i);" nl
+              "  for (i = FPARG(1); i>1+"params-length-str"; i--) {" nl
               "    PUSH(R1); //cdr" nl
-              "    MOV(R7,FPARG(R5));" nl
-              "    PUSH(R7); //car" nl
+              "    PUSH(FPARG(i)); //car" nl
               "    CALL(MAKE_SOB_PAIR);" nl
               "    MOV(R1, R0); //put the result in R0" nl
               "    DROP(2);" nl
@@ -796,9 +794,10 @@
   (lambda (e env-size param-size)
     (with e
           (lambda (applic proc args)
-            (let ((args-num-string (number->string (length args))))
+            (let ((args-num-string (number->string (+ (length args) 1)))) ;1 is added because of the extra Magic argument
               (string-append
                "  /* applic */" nl
+               "  PUSH(SOB_NIL); //Magic argument. Reserving a space for a potential empty list of optional arguments." nl
                (apply string-append (map
                                      (lambda (arg)
                                        (string-append
@@ -825,13 +824,14 @@
   (lambda (e env-size param-size)
     (with e
           (lambda (tc-applic proc args)
-            (let ((args-num-string (number->string (length args)))
+            (let ((args-num-string (number->string (+ (length args) 1))) ;Adding 1 because of the extra Magic argument
                   (frame-copy-steps (number->string (+ (length args) 3)))
                   (label-loop (^label-loop))
                   (label-endloop (^label-end-loop)))
               (string-append
                "  /* tc-applic */" nl
                "  /* Pushing arguments */" nl
+               "  PUSH(SOB_NIL); //Magic argument. Reserving a space for a potential empty list of optional arguments." nl
                (apply string-append (map
                                      (lambda (arg)
                                        (string-append
