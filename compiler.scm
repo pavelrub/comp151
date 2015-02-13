@@ -729,7 +729,6 @@
            (let ((params-length-str (number->string (length params))))
              (string-append
               "  /* stack-correction code for lambda-opt */" nl
-              "  MOV(R1,SOB_NIL); //R1 = '()" nl
               "  MOV(R1,FPARG(1+FPARG(1)));" nl
               "  /* Creating a list of optional arguments */" nl
               "  for (i = FPARG(1); i>1+"params-length-str"; i--) {" nl
