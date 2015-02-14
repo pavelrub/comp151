@@ -36,6 +36,7 @@
              (pair? x)
              (list? x)))))
 
+
 (define beginify
   (lambda (a)
     (cond ((null? a) (if #f #f))
@@ -44,12 +45,15 @@
 
 (define *void-object* (if #f #f))
 
+(define void?
+  (lambda (e)
+    (eq? e *void-object*)))
+
 (define list-of-vars?
   (lambda (x)
     (and
      (list? x)
      (andmap var? x))))
-
 (define improper-list?
   (lambda (x)
     (and (pair? x) (not (list? x)))))
@@ -960,3 +964,76 @@
                                   (map (lambda (expr) (annotate-tc (pe->lex-pe (parse expr)))) sexprs))))
            (complete-code (string-append prologue output-code epilogue)))
       (write-to-file target complete-code))))
+
+(define foo
+  (lambda (e)
+    (cond
+      ((or  (null? e) (boolean? e)) `(,e))
+      ((or (number? e) (string? e) (void? e)) `(,e))
+      ((pair? e)
+       `(,@(foo (car e)) ,@(foo (cdr e)) ,e))
+       ((vector? e)
+        `(,@(apply append
+                      (map foo
+                           (vector->list e))) ,e))
+       ((symbol? e)
+        `(,@(foo (symbol->string e)) ,e))
+       ;(else `(,e))
+       )))
+
+(define extract-cons
+  (lambda (pe)
+    (cond
+     ((atom? pe) '())
+     ((null? pe) '())
+     ((pe-const? pe) (list pe))
+     (else (append (extract-cons (car pe)) (extract-cons (cdr pe)))))))
+
+(define full-parse
+  (lambda (sexpr)
+    (annotate-tc (pe->lex-pe (parse sexpr)))))
+(define (remove-duplicates l)
+  (let ((rev-l l))
+    (cond ((null? rev-l)
+           '())
+          ((member (car rev-l) (cdr rev-l))
+           (remove-duplicates (cdr rev-l)))
+          (else
+           (cons (car rev-l) (remove-duplicates (cdr rev-l)))))))
+(define parse-extract-cons
+  (lambda (sexpr)
+    (let ((const-list (remove-duplicates (extract-cons (annotate-tc (pe->lex-pe (parse sexpr)))))))
+      (apply append (map (lambda (const)
+             (foo (cadr const)))
+           const-list)))))
+
+(parse-extract-cons '(begin '(1 1 2 "abc") 1 1 2 "abc"))
+(remove-duplicates (foo '(1 1 2 3 "abc")))
+(define create-dict
+  (lambda (const-lst acc-lst addr)
+    (cond
+     ((null? const-lst) (reverse acc-lst))
+     (else 
+      (let ((curr (car const-lst)))
+        (cond
+         ((number? curr)
+          (create-dict
+           (cdr const-lst)
+           (cons
+            `(,curr ,addr (t_number ,curr)) 
+            acc-lst)
+           (+ addr 2)))
+         ((pair? curr)
+          (let ((addr_car (cadr (assoc (car curr) acc-lst)))
+                (addr_cdr (cadr (assoc (cdr curr) acc-lst))))
+            (create-dict
+             (cdr const-lst)
+             (cons
+              `(,curr ,addr (t_pair ,addr_car ,addr_cdr))
+              acc-lst)
+             (+ addr 3))))
+         ))))))
+
+(remove-duplicates (foo '(1 1 2 3)))
+(create-dict (remove-duplicates (foo '(1 1 2 3))) '() 1)
+(create-dict '(1 2 3) '() 1)
