@@ -645,7 +645,9 @@
 (define ^code-gen-lambda
   (lambda (type)
     (lambda (e env-size param-size)
-      (let ((params (cadr e))
+      (let ((params (cond
+                     ((or (eq? type 'opt) (eq? type 'simple)) (cadr e))
+                     ((eq? type 'variadic) '())))
             (body (get-last e))
             (new-env-size-str (number->string (+ env-size 1)))
             (param-size-str (number->string param-size))
@@ -725,10 +727,10 @@
          "  MOV(FP,SP);" nl
          (cond
           ((eq? type 'simple) "  /* stack-correction-code-for-lambda-simple")
-          ((eq? type 'opt)
+          ((or (eq? type 'opt) (eq? type 'variadic))
            (let ((params-length-str (number->string (length params))))
              (string-append
-              "  /* stack-correction code for lambda-opt */" nl
+              "  /* stack-correction code for lambda-opt/variadic */" nl
               "  MOV(R1,FPARG(1+FPARG(1)));" nl
               "  /* Creating a list of optional arguments */" nl
               "  for (i = FPARG(1); i>1+"params-length-str"; i--) {" nl
@@ -740,10 +742,9 @@
               "  }" nl
               "  /* Finished creating the list of optional arguments */" nl
               "  MOV(STACK(SP-5-"params-length-str"),R1); //Puting the optional arguments list after all the non-optional params" nl
-              "  /* end of stack-correction code for lambda-opt" nl
+              "  /* end of stack-correction code for lambda-opt/variadic" nl
               )))
-          ((eq? type 'variadic) "  /* stack-correction-code-for-lambda-variadic */")
-          ("  /* error */"))
+          (else "  /* error */"))
          nl
          "  /* code-gen of the lambda body */" nl
          (code-gen body (+ env-size 1) (length params));
@@ -899,6 +900,10 @@
   (lambda (pe)
     (and (list? pe) (eq? (car pe) 'lambda-opt))))
 
+(define pe-lambda-variadic?
+  (lambda (pe)
+    (and (list? pe) (eq? (car pe) 'lambda-variadic))))
+
 ;(define code-gen-lambda-opt
 ;  (lambda (pe env-size param-size)
 ;    (with pe
@@ -922,6 +927,7 @@
        ((pe-tc-applic? pe) (code-gen-tc-applic pe env-size param-size))
        ((pe-fvar? pe) (code-gen-fvar pe env-size param-size))
        ((pe-lambda-opt? pe) (code-gen-lambda-opt pe env-size param-size))
+       ((pe-lambda-variadic? pe) (code-gen-lambda-variadic pe env-size param-size))
        (else (void)))))) ;TODO: This needs to be replaced with an error message
 
 (define write-to-file
