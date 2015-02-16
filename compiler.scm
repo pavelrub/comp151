@@ -520,6 +520,17 @@
      "  /* end of cons code and definition */" nl
    )))
 
+(define create_mem_prologue 
+  (lambda (consts-dict)
+    (let ((consts-str (create-consts-string consts-dict))
+          (first-addr (caar consts-dict))
+      (string-append
+       "  /* initializing the memory with constants found in the program */" nl
+       "  long* mem_init = {"consts-str"}; //The memory image of the constants" nl
+       "  memcpy(ADDR("first-addr"), mem_init, sizeof(mem_init)); //Copying the array into memory" nl
+       "  /* end of memory initialization */" nl
+       )))))
+
 (define epilogue
   (string-append
    "  /* Stopping the machine */" nl
@@ -564,27 +575,29 @@
     (cadr (assoc c dict))))
 
 (define code-gen-const
-  (lambda (e)
+  (lambda (e const-dict)
     (with e
           (lambda (const c)
-            (cond
-             ((eq? c #f) (string-append
-                          "  /* #f */" nl
-                          "  MOV(R0, SOB_FALSE);" nl
-                          "  /* end of #f */" nl))
-             ((eq? c #t) (string-append
-                          "  /* #t */" nl
-                          "  MOV(R0, SOB_TRUE);" nl
-                          "  /* end of #t */" nl))
-             ((eq? c *void-object*) (string-append
-                                     "  /* #<void> */" nl
-                                     "  MOV(R0, SOB_VOID);" nl
-                                     "  /* end of #<void> */" nl))
-             ((eq? c '()) (string-append
-                           "  /* '() (empty list) */" nl
-                           "  MOV(R0, SOB_NIL);" nl
-                           "  /* end of '() */" nl))
-             )))))
+            (let ((addr (cadr (assoc c const-dict))))
+              (cond
+               (assoc c const-dict)
+               ((eq? c #f) (string-append
+                            "  /* #f */" nl
+                            "  MOV(R0, SOB_FALSE);" nl
+                            "  /* end of #f */" nl))
+               ((eq? c #t) (string-append
+                            "  /* #t */" nl
+                            "  MOV(R0, SOB_TRUE);" nl
+                            "  /* end of #t */" nl))
+               ((eq? c *void-object*) (string-append
+                                       "  /* #<void> */" nl
+                                       "  MOV(R0, SOB_VOID);" nl
+                                       "  /* end of #<void> */" nl))
+               ((eq? c '()) (string-append
+                             "  /* '() (empty list) */" nl
+                             "  MOV(R0, SOB_NIL);" nl
+                             "  /* end of '() */" nl))
+               ))))))
 
 (define ^label-orexit (^^label "Lor_exit"))
 
@@ -1002,6 +1015,18 @@
                                 (dedup (topo-srt-const (cadr const))))
                               const-list)))))
 
+(define get-item
+  (lambda (l col)
+    (if (eq? col 1)
+        (car l)
+        (get-item (cdr l) (- col 1))))) 
+
+(define assoc-i
+  (lambda (key l col)
+    (if (equal? (get-item (car l) col) key)
+        (car l)
+        (assoc-i key (cdr l) col))))
+
 (define consts->dict
   (lambda (const-lst acc-lst addr)
     (cond
@@ -1011,18 +1036,18 @@
         (cond
          ((number? curr)
           (consts->dict (cdr const-lst)
-                        (cons  `(,curr ,addr (\T_NUMBER ,curr)) acc-lst)
+                        (cons  `(,addr ,curr (\T_NUMBER ,curr)) acc-lst)
                         (+ addr 2)))
          ((string? curr)
           (let ((ascii-chars (map char->integer (string->list curr))))
             (consts->dict (cdr const-lst)
-                         (cons `(,curr ,addr (\T_STRING ,(string-length curr) ,@ascii-chars)) acc-lst)
+                         (cons `(,addr ,curr (\T_STRING ,(string-length curr) ,@ascii-chars)) acc-lst)
                          (+ addr (+ (string-length curr) 1)))))
          ((pair? curr)
-          (let ((addr_car (cadr (assoc (car curr) acc-lst)))
-                (addr_cdr (cadr (assoc (cdr curr) acc-lst))))
+          (let ((addr_car (car (assoc-i (car curr) acc-lst 2)))
+                (addr_cdr (car (assoc-i (cdr curr) acc-lst 2))))
             (consts->dict (cdr const-lst)
-                         (cons `(,curr ,addr (\T_PAIR ,addr_car ,addr_cdr)) acc-lst)
+                         (cons `(,addr ,curr (\T_PAIR ,addr_car ,addr_cdr)) acc-lst)
                          (+ addr 3))))
          (else (consts->dict (cdr const-lst) acc-lst addr)))
         )))))
@@ -1044,14 +1069,17 @@
   (lambda (dict)
     (comma-sep (list->list-of-strings (apply append (map caddr dict))))))
 
-(define create-consts-string
+(define create-consts-dict
   (lambda (pes addr)
-    (let ((basic-consts "T_VOID, T_NIL, T_BOOL, 0, T_BOOL, 1, ")
-          (basic-consts2 `((() ,addr (\T_NIL))
-                           (,*void-object* ,(+ addr 1) (\T_VOID))
-                           (,#f ,(+ addr 2) (\T_BOOL 0))
-                           (,#t ,(+ addr 4) (\T_BOOL 1)))))
+    (let ((basic-consts2 `((,addr () (\T_NIL))
+                           (,(+ addr 1) ,*void-object* (\T_VOID))
+                           (,(+ addr 2) ,#f (\T_BOOL 0))
+                           (,(+ addr 4) ,#t (\T_BOOL 1)))))
       (consts->dict (process-consts (extract-consts pes)) (reverse basic-consts2) (+ addr 6)))))
+    
+(define create-consts-string
+  (lambda (dict)
+      (dict->consts-string dict)))
 
 (define compile-scheme-file
   (lambda (source target)
@@ -1059,7 +1087,8 @@
            (pe-lst (map (lambda (expr)
                           (parse-full expr))
                         sexprs))
-           (const-table (create-consts-string pe-lst 1))
+           (const-dict (create-const-dict pe-lst 100))
+           (mem-init (create-mem-prologue const-dict))
            (output-code 
             (apply string-append (map
                                   (lambda (x)
@@ -1067,7 +1096,7 @@
                                      (code-gen x 0 0)
                                      epilogue-sexpr))
                                   pe-lst)))
-           (complete-code (string-append prologue output-code epilogue)))
+           (complete-code (string-append prologue mem-init output-code epilogue)))
       (write-to-file target complete-code))))
 
 (define create-abc-dict
@@ -1077,15 +1106,17 @@
         '())))
 
 (define abc-dict (create-abc-dict 10 255))
-(parse-full '(begin '(1 2 3 4 "abc")))
+(parse-full '(begin 1 2 3 4 5))
 (define pes (map parse-full '((begin '(1 2 3 4 "abc")) (begin "abc"))))
-(create-consts-string (map parse-full '((begin '(1 2 3 4 "abc")) (begin "abc"))) 1)
-(create-consts-string pes 50)
-(extract-consts pes)
-(process-consts (extract-consts pes))
-(consts->dict (process-consts (extract-consts pes)) '() 1)
-(define dict (consts->dict (process-consts (extract-consts pes)) '() 1))
-(map caddr dict)
-(list->list-of-strings (map caddr dict))
-(dict->consts-string (consts->dict (process-consts (extract-consts pes)) '() 1))
-(
+(define dict2 (create-consts-dict (map parse-full '((begin '(1 2 3 4 "abc")) (begin "abc"))) 100))
+(create-consts-string dict2) 
+
+(define d3 (create-consts-dict (map parse-full '((begin '(1 3 4 "abc")) (begin "abc") (begin '(1 23 "ad" "abc" 2 3)))) 100))
+(create-consts-dict (map parse-full '((begin '(1 2 3 4 5)))) 100)
+(define d2 (create-consts-dict (map parse-full '((begin 1 '()))) 100))
+(define d1 (process-consts (extract-consts (parse-full '(begin '(1))))))
+(process-consts (extract-consts (parse-full '(begin 1))))
+dict2
+(assoc-i 104 dict2 2)
+(process-consts (extract-consts (map parse-full '((begin '(1 #f 2 3 4 "abc")) (begin "abc") (begin '(1 23 "ad" "abc" 2 3))))))
+(create-consts-string d3)
