@@ -559,6 +559,10 @@
                           (code-gen pe env-size param-size))
                         exprs))))))
 
+(define get-const-addr
+  (lambda (c dict)
+    (cadr (assoc c dict))))
+
 (define code-gen-const
   (lambda (e)
     (with e
@@ -952,64 +956,53 @@
            (complete-code (string-append prologue output-code epilogue)))
       (write-to-file "out.c" complete-code))))
 
-(define compile-scheme-file
-  (lambda (source target)
-    (let* ((sexprs (file->sexprs source))
-           (output-code 
-            (apply string-append (map
-                                  (lambda (x)
-                                    (string-append
-                                     (code-gen x 0 0)
-                                     epilogue-sexpr))
-                                  (map (lambda (expr) (annotate-tc (pe->lex-pe (parse expr)))) sexprs))))
-           (complete-code (string-append prologue output-code epilogue)))
-      (write-to-file target complete-code))))
+(define parse-full
+  (lambda (sexpr)
+    (annotate-tc (pe->lex-pe (parse sexpr)))))
 
-(define foo
+(define topo-srt-const
   (lambda (e)
     (cond
       ((or  (null? e) (boolean? e)) `(,e))
       ((or (number? e) (string? e) (void? e)) `(,e))
       ((pair? e)
-       `(,@(foo (car e)) ,@(foo (cdr e)) ,e))
+       `(,@(topo-srt-const (car e)) ,@(foo (cdr e)) ,e))
        ((vector? e)
         `(,@(apply append
-                      (map foo
+                      (map topo-srt-const
                            (vector->list e))) ,e))
        ((symbol? e)
-        `(,@(foo (symbol->string e)) ,e))
+        `(,@(topo-srt-const (symbol->string e)) ,e))
        ;(else `(,e))
        )))
 
-(define extract-cons
+(define dedup
+  (lambda (l)
+    (reverse (dedup-helper (reverse l)))))
+
+(define dedup-helper
+  (lambda (l)
+      (cond
+       ((null? l) '())
+       ((member (car l) (cdr l))
+        (dedup-helper (cdr l)))
+       (else (cons (car l) (dedup-helper (cdr l))))))))
+
+(define extract-consts
   (lambda (pe)
     (cond
      ((atom? pe) '())
      ((null? pe) '())
      ((pe-const? pe) (list pe))
-     (else (append (extract-cons (car pe)) (extract-cons (cdr pe)))))))
+     (else (append (extract-consts (car pe)) (extract-consts (cdr pe)))))))
 
-(define full-parse
-  (lambda (sexpr)
-    (annotate-tc (pe->lex-pe (parse sexpr)))))
-(define (remove-duplicates l)
-  (let ((rev-l l))
-    (cond ((null? rev-l)
-           '())
-          ((member (car rev-l) (cdr rev-l))
-           (remove-duplicates (cdr rev-l)))
-          (else
-           (cons (car rev-l) (remove-duplicates (cdr rev-l)))))))
-(define parse-extract-cons
-  (lambda (sexpr)
-    (let ((const-list (remove-duplicates (extract-cons (annotate-tc (pe->lex-pe (parse sexpr)))))))
-      (apply append (map (lambda (const)
-             (foo (cadr const)))
-           const-list)))))
+(define process-consts 
+  (lambda (const-list)
+    (dedup (apply append (map (lambda (const)
+                                (dedup (topo-srt-const (cadr const))))
+                              const-list)))))
 
-(parse-extract-cons '(begin '(1 1 2 "abc") 1 1 2 "abc"))
-(remove-duplicates (foo '(1 1 2 3 "abc")))
-(define create-dict
+(define consts->dict
   (lambda (const-lst acc-lst addr)
     (cond
      ((null? const-lst) (reverse acc-lst))
@@ -1017,23 +1010,82 @@
       (let ((curr (car const-lst)))
         (cond
          ((number? curr)
-          (create-dict
-           (cdr const-lst)
-           (cons
-            `(,curr ,addr (t_number ,curr)) 
-            acc-lst)
-           (+ addr 2)))
+          (consts->dict (cdr const-lst)
+                        (cons  `(,curr ,addr (\T_NUMBER ,curr)) acc-lst)
+                        (+ addr 2)))
+         ((string? curr)
+          (let ((ascii-chars (map char->integer (string->list curr))))
+            (consts->dict (cdr const-lst)
+                         (cons `(,curr ,addr (\T_STRING ,(string-length curr) ,@ascii-chars)) acc-lst)
+                         (+ addr (+ (string-length curr) 1)))))
          ((pair? curr)
           (let ((addr_car (cadr (assoc (car curr) acc-lst)))
                 (addr_cdr (cadr (assoc (cdr curr) acc-lst))))
-            (create-dict
-             (cdr const-lst)
-             (cons
-              `(,curr ,addr (t_pair ,addr_car ,addr_cdr))
-              acc-lst)
-             (+ addr 3))))
-         ))))))
+            (consts->dict (cdr const-lst)
+                         (cons `(,curr ,addr (\T_PAIR ,addr_car ,addr_cdr)) acc-lst)
+                         (+ addr 3))))
+         (else (consts->dict (cdr const-lst) acc-lst addr)))
+        )))))
 
-(remove-duplicates (foo '(1 1 2 3)))
-(create-dict (remove-duplicates (foo '(1 1 2 3))) '() 1)
-(create-dict '(1 2 3) '() 1)
+(define comma-sep
+  (lambda (list)
+    (fold-left (lambda (e x) (string-append e ", " x))
+               `,(car list)
+               (cdr list))))
+
+(define list->list-of-strings
+  (lambda (l)
+    (map (lambda (x)
+           (cond ((symbol? x) (symbol->string x))
+                 ((number? x) (number->string x))))
+         l)))
+
+(define dict->consts-string
+  (lambda (dict)
+    (comma-sep (list->list-of-strings (apply append (map caddr dict))))))
+
+(define create-consts-string
+  (lambda (pes addr)
+    (let ((basic-consts "T_VOID, T_NIL, T_BOOL, 0, T_BOOL, 1, ")
+          (basic-consts2 `((() ,addr (\T_NIL))
+                           (,*void-object* ,(+ addr 1) (\T_VOID))
+                           (,#f ,(+ addr 2) (\T_BOOL 0))
+                           (,#t ,(+ addr 4) (\T_BOOL 1)))))
+      (consts->dict (process-consts (extract-consts pes)) (reverse basic-consts2) (+ addr 6)))))
+
+(define compile-scheme-file
+  (lambda (source target)
+    (let* ((sexprs (file->sexprs source))
+           (pe-lst (map (lambda (expr)
+                          (parse-full expr))
+                        sexprs))
+           (const-table (create-consts-string pe-lst 1))
+           (output-code 
+            (apply string-append (map
+                                  (lambda (x)
+                                    (string-append
+                                     (code-gen x 0 0)
+                                     epilogue-sexpr))
+                                  pe-lst)))
+           (complete-code (string-append prologue output-code epilogue)))
+      (write-to-file target complete-code))))
+
+(define create-abc-dict
+  (lambda (addr remaining)
+    (if (>= remaining 0)
+        (cons `(,(integer->char remaining) ,(+ addr remaining) (\T_CHAR ,remaining)) (create-abc-dict addr (- remaining 1)))
+        '())))
+
+(define abc-dict (create-abc-dict 10 255))
+(parse-full '(begin '(1 2 3 4 "abc")))
+(define pes (map parse-full '((begin '(1 2 3 4 "abc")) (begin "abc"))))
+(create-consts-string (map parse-full '((begin '(1 2 3 4 "abc")) (begin "abc"))) 1)
+(create-consts-string pes 50)
+(extract-consts pes)
+(process-consts (extract-consts pes))
+(consts->dict (process-consts (extract-consts pes)) '() 1)
+(define dict (consts->dict (process-consts (extract-consts pes)) '() 1))
+(map caddr dict)
+(list->list-of-strings (map caddr dict))
+(dict->consts-string (consts->dict (process-consts (extract-consts pes)) '() 1))
+(
