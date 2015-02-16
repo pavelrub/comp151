@@ -578,26 +578,31 @@
   (lambda (e const-dict)
     (with e
           (lambda (const c)
-            (let ((addr (cadr (assoc c const-dict))))
-              (cond
-               (assoc c const-dict)
-               ((eq? c #f) (string-append
-                            "  /* #f */" nl
-                            "  MOV(R0, SOB_FALSE);" nl
-                            "  /* end of #f */" nl))
-               ((eq? c #t) (string-append
-                            "  /* #t */" nl
-                            "  MOV(R0, SOB_TRUE);" nl
-                            "  /* end of #t */" nl))
-               ((eq? c *void-object*) (string-append
-                                       "  /* #<void> */" nl
-                                       "  MOV(R0, SOB_VOID);" nl
-                                       "  /* end of #<void> */" nl))
-               ((eq? c '()) (string-append
-                             "  /* '() (empty list) */" nl
-                             "  MOV(R0, SOB_NIL);" nl
-                             "  /* end of '() */" nl))
+            (let ((number->string (addr (car (assoc-i c const-dict 2)))))
+              (string-append
+               " /* constant */" nl
+               " MOV(R0,"addr"); //The calculated address from the symbol table" nl
+               " / end of constant */" nl
                ))))))
+              ;(cond
+              ; (assoc c const-dict)
+              ; ((eq? c #f) (string-append
+              ;              "  /* #f */" nl
+              ;              "  MOV(R0, SOB_FALSE);" nl
+              ;              "  /* end of #f */" nl))
+              ; ((eq? c #t) (string-append
+              ;              "  /* #t */" nl
+              ;              "  MOV(R0, SOB_TRUE);" nl
+              ;              "  /* end of #t */" nl))
+              ; ((eq? c *void-object*) (string-append
+              ;                         "  /* #<void> */" nl
+              ;                         "  MOV(R0, SOB_VOID);" nl
+              ;                         "  /* end of #<void> */" nl))
+              ; ((eq? c '()) (string-append
+              ;               "  /* '() (empty list) */" nl
+              ;               "  MOV(R0, SOB_NIL);" nl
+              ;               "  /* end of '() */" nl))
+              ; ))))))
 
 (define ^label-orexit (^^label "Lor_exit"))
 
@@ -930,26 +935,25 @@
 ;    (with pe
 ;          (lambda (lambda-opt param rest body)
 ;            (
-
+(define code-gen-lambda-simple (^code-gen-lambda 'simple))
+(define code-gen-lambda-opt (^code-gen-lambda 'opt))
+(define code-gen-lambda-variadic (^code-gen-lambda 'variadic))
 (define code-gen
   (lambda (pe env-size param-size)
-    (let ((code-gen-lambda-simple (^code-gen-lambda 'simple))
-          (code-gen-lambda-opt (^code-gen-lambda 'opt))
-          (code-gen-lambda-variadic (^code-gen-lambda 'variadic)))
-      (cond
-       ((pe-pvar? pe) (code-gen-pvar pe env-size param-size)) 
-       ((pe-bvar? pe) (code-gen-bvar pe env-size param-size)) 
-       ((pe-seq? pe) (code-gen-seq pe env-size param-size))
-       ((pe-const? pe) (code-gen-const pe))
-       ((pe-or? pe) (code-gen-or pe env-size param-size))
-       ((pe-if3? pe) (code-gen-if3 pe env-size param-size))
-       ((pe-lambda-simple? pe) (code-gen-lambda-simple pe env-size param-size))
-       ((pe-applic? pe) (code-gen-applic pe env-size param-size))
-       ((pe-tc-applic? pe) (code-gen-tc-applic pe env-size param-size))
-       ((pe-fvar? pe) (code-gen-fvar pe env-size param-size))
-       ((pe-lambda-opt? pe) (code-gen-lambda-opt pe env-size param-size))
-       ((pe-lambda-variadic? pe) (code-gen-lambda-variadic pe env-size param-size))
-       (else (void)))))) ;TODO: This needs to be replaced with an error message
+    (cond
+     ((pe-pvar? pe) (code-gen-pvar pe env-size param-size)) 
+     ((pe-bvar? pe) (code-gen-bvar pe env-size param-size)) 
+     ((pe-seq? pe) (code-gen-seq pe env-size param-size))
+     ((pe-const? pe) (code-gen-const pe))
+     ((pe-or? pe) (code-gen-or pe env-size param-size))
+     ((pe-if3? pe) (code-gen-if3 pe env-size param-size))
+     ((pe-lambda-simple? pe) (code-gen-lambda-simple pe env-size param-size))
+     ((pe-applic? pe) (code-gen-applic pe env-size param-size))
+     ((pe-tc-applic? pe) (code-gen-tc-applic pe env-size param-size))
+     ((pe-fvar? pe) (code-gen-fvar pe env-size param-size))
+     ((pe-lambda-opt? pe) (code-gen-lambda-opt pe env-size param-size))
+     ((pe-lambda-variadic? pe) (code-gen-lambda-variadic pe env-size param-size))
+     (else (void))))) ;TODO: This needs to be replaced with an error message
 
 (define write-to-file
   (lambda (filename string)
