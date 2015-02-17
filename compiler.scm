@@ -1009,13 +1009,23 @@
         (dedup-helper (cdr l)))
        (else (cons (car l) (dedup-helper (cdr l)))))))
 
-(define extract-consts
-  (lambda (pe)
-    (cond
-     ((atom? pe) '())
-     ((null? pe) '())
-     ((pe-const? pe) (list pe))
-     (else (append (extract-consts (car pe)) (extract-consts (cdr pe)))))))
+(define ^extract-by-tag
+  (lambda (tag)
+    (letrec ((run
+              (lambda (pe)
+                (cond
+                 ((atom? pe) '())
+                 ((null? pe) '())
+                 ((eq? (car pe) tag) (list pe))
+                 (else (append (run (car pe)) (run (cdr pe))))))))
+      run)))
+
+(define extract-consts (^extract-by-tag 'const))
+(define extract-fvars (^extract-by-tag 'fvar))
+
+(define process-fvars
+  (lambda (fvar-list)
+    (dedup (apply append (map cdr fvar-list)))))
 
 (define process-consts 
   (lambda (const-list)
@@ -1034,6 +1044,16 @@
     (if (equal? (get-item (car l) col) key)
         (car l)
         (assoc-i key (cdr l) col))))
+
+(define fvars->dict
+  (lambda (fvar-lst acc-lst addr)
+    (cond
+     ((null? fvar-lst) (reverse acc-lst))
+     (else
+      (let ((curr (car fvars-lst)))
+        (fvars->dict (cdr fvar-lst)
+                     (cons `(,addr ,curr) acc-lst)
+                     (+ addr 1)))))))
 
 (define consts->dict
   (lambda (const-lst acc-lst addr)
@@ -1152,3 +1172,6 @@
 (define d2 (create-consts-dict (map parse-full (file->sexprs "tests/symbols.scm")) 100))
 (create-consts-string d2)
 d2
+(parse-full '(#(1 2 3)))
+(define f1 (process-fvars (extract-fvars (parse-full '(define fact (lambda (n) (if (zero? n) 1 (* n (fact (- n 1))))))))))
+(fvars->dict f1 '() 200)
