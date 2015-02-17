@@ -976,22 +976,23 @@
 (define code-gen-lambda-variadic (^code-gen-lambda 'variadic))
 (define code-gen
   (lambda (pe env-size param-size const-table fvar-table)
-    (cond
-     ((pe-pvar? pe) (code-gen-pvar pe env-size param-size const-table fvar-table)) 
-     ((pe-bvar? pe) (code-gen-bvar pe env-size param-size const-table fvar-table)) 
-     ((pe-seq? pe) (code-gen-seq pe env-size param-size const-table fvar-table))
-     ((pe-const? pe) (code-gen-const pe env-size param-size const-table fvar-table))
-     ((pe-or? pe) (code-gen-or pe env-size param-size const-table fvar-table))
-     ((pe-if3? pe) (code-gen-if3 pe env-size param-size const-table fvar-table))
-     ((pe-lambda-simple? pe) (code-gen-lambda-simple pe env-size param-size const-table fvar-table))
-     ((pe-applic? pe) (code-gen-applic pe env-size param-size const-table fvar-table))
-     ((pe-tc-applic? pe) (code-gen-tc-applic pe env-size param-size const-table fvar-table))
-     ((pe-fvar? pe) (code-gen-fvar pe env-size param-size const-table fvar-table))
-     ((pe-lambda-opt? pe) (code-gen-lambda-opt pe env-size param-size const-table fvar-table))
-     ((pe-lambda-variadic? pe) (code-gen-lambda-variadic pe env-size param-size const-table fvar-table))
-     ((pe-define? pe) (code-gen-define pe env-size param-size const-table fvar-table))
-     ((pe-fvar? pe) (code-gen-fvar pe env-size param-size const-table fvar-table))
-     (else (void))))) ;TODO: This needs to be replaced with an error message
+    (let ((params `(,pe ,env-size ,param-size ,const-table ,fvar-table)))
+      (cond
+       ((pe-pvar? pe) (apply code-gen-pvar params))
+       ((pe-bvar? pe) (apply code-gen-bvar params))
+       ((pe-seq? pe) (apply code-gen-seq params))
+       ((pe-const? pe) (apply code-gen-const params))
+       ((pe-or? pe) (apply code-gen-or params))
+       ((pe-if3? pe) (apply code-gen-if3 params))
+       ((pe-lambda-simple? pe) (apply code-gen-lambda-simple params))
+       ((pe-applic? pe) (apply code-gen-applic params))
+       ((pe-tc-applic? pe) (apply code-gen-tc-applic params))
+       ((pe-fvar? pe) (apply code-gen-fvar params))
+       ((pe-lambda-opt? pe) (apply code-gen-lambda-opt params))
+       ((pe-lambda-variadic? pe) (apply code-gen-lambda-variadic params))
+       ((pe-define? pe) (apply code-gen-define params))
+       ((pe-fvar? pe) (apply code-gen-fvar params))
+       (else (void)))))) ;TODO: This needs to be replaced with an error message
 
 (define write-to-file
   (lambda (filename string)
