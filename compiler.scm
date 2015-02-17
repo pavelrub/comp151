@@ -529,7 +529,7 @@
        "  /* initializing the memory with constants found in the program */" nl
        "  long mem_init["num-of-consts"] = {"consts-str"}; //The memory image of the constants" nl
        "  memcpy(&ADDR("first-addr"), mem_init, sizeof(mem_init)); //Copying the array into memory" nl
-       "  MOV(IND(0),2000);"
+       "  MOV(IND(0),2000);" nl
        "  /* end of memory initialization */" nl
        ))))
 
@@ -582,9 +582,9 @@
           (lambda (const c)
             (let ((addr (number->string (car (assoc-i c const-dict 2)))))
               (string-append
-               " /* constant */" nl
-               " MOV(R0,"addr"); //The calculated address from the symbol table" nl
-               " /* end of constant */" nl
+               "  /* constant */" nl
+               "  MOV(R0,"addr"); //The calculated address from the symbol table" nl
+               "  /* end of constant */" nl
                ))))))
               ;(cond
               ; (assoc c const-dict)
@@ -975,7 +975,7 @@
                                     (code-gen x 0 0))
                                   (map parse sexprs))))
            (complete-code (string-append prologue output-code epilogue)))
-      (write-to-file "out.c" complete-code))))
+      output-code)))
 
 (define parse-full
   (lambda (sexpr)
@@ -1050,13 +1050,18 @@
           (let ((ascii-chars (map char->integer (string->list curr))))
             (consts->dict (cdr const-lst)
                          (cons `(,addr ,curr (\T_STRING ,(string-length curr) ,@ascii-chars)) acc-lst)
-                         (+ addr (+ (string-length curr) 1)))))
+                         (+ addr (+ (string-length curr) 2)))))
          ((pair? curr)
-          (let ((addr_car (car (assoc-i (car curr) acc-lst 2)))
-                (addr_cdr (car (assoc-i (cdr curr) acc-lst 2))))
+          (let ((addr-car (car (assoc-i (car curr) acc-lst 2)))
+                (addr-cdr (car (assoc-i (cdr curr) acc-lst 2))))
             (consts->dict (cdr const-lst)
-                         (cons `(,addr ,curr (\T_PAIR ,addr_car ,addr_cdr)) acc-lst)
+                         (cons `(,addr ,curr (\T_PAIR ,addr-car ,addr-cdr)) acc-lst)
                          (+ addr 3))))
+         ((symbol? curr)
+          (let ((addr-str (car (assoc-i (symbol->string curr) acc-lst 2))))
+            (consts->dict (cdr const-lst)
+                          (cons `(,addr ,curr (\T_SYMBOL ,addr-str)) acc-lst)
+                          (+ addr 2))))
          (else (consts->dict (cdr const-lst) acc-lst addr)))
         )))))
 
@@ -1136,3 +1141,14 @@
 ;(process-consts (extract-consts (map parse-full '(#f))))
 ;(parse-full '#f)
 
+;(parse-full '(begin 'm))
+;(define t1 (process-consts (extract-consts (parse-full '(begin 'm)))))
+;t1
+;(consts->dict t1 '() 100)
+;(create-consts-dict t1 100) 
+;(create-consts-dict (process-consts (extract-consts (parse-full '(begin 'm)))) 100)
+;(define d1 (create-consts-dict (map parse-full '((begin 'm))) 100))
+;(create-consts-string d1)
+(define d2 (create-consts-dict (map parse-full (file->sexprs "tests/symbols.scm")) 100))
+(create-consts-string d2)
+d2
