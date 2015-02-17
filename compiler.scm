@@ -520,16 +520,18 @@
      "  /* end of cons code and definition */" nl
    )))
 
-(define create_mem_prologue 
+(define create-mem-prologue 
   (lambda (consts-dict)
     (let ((consts-str (create-consts-string consts-dict))
-          (first-addr (caar consts-dict))
+          (num-of-consts (number->string (get-consts-size consts-dict)))
+          (first-addr (number->string (caar consts-dict))))
       (string-append
        "  /* initializing the memory with constants found in the program */" nl
-       "  long* mem_init = {"consts-str"}; //The memory image of the constants" nl
-       "  memcpy(ADDR("first-addr"), mem_init, sizeof(mem_init)); //Copying the array into memory" nl
+       "  long mem_init["num-of-consts"] = {"consts-str"}; //The memory image of the constants" nl
+       "  memcpy(&ADDR("first-addr"), mem_init, sizeof(mem_init)); //Copying the array into memory" nl
+       "  MOV(IND(0),2000);"
        "  /* end of memory initialization */" nl
-       )))))
+       ))))
 
 (define epilogue
   (string-append
@@ -562,12 +564,12 @@
     (eq? (car pe) 'or)))
   
 (define code-gen-seq
-  (lambda (e env-size param-size)
+  (lambda (e env-size param-size const-table)
     (with e
           (lambda (seq exprs)
             (apply string-append
                    (map (lambda (pe)
-                          (code-gen pe env-size param-size))
+                          (code-gen pe env-size param-size const-table))
                         exprs))))))
 
 (define get-const-addr
@@ -575,14 +577,14 @@
     (cadr (assoc c dict))))
 
 (define code-gen-const
-  (lambda (e const-dict)
+  (lambda (e env-size param-size const-dict)
     (with e
           (lambda (const c)
-            (let ((number->string (addr (car (assoc-i c const-dict 2)))))
+            (let ((addr (number->string (car (assoc-i c const-dict 2)))))
               (string-append
                " /* constant */" nl
                " MOV(R0,"addr"); //The calculated address from the symbol table" nl
-               " / end of constant */" nl
+               " /* end of constant */" nl
                ))))))
               ;(cond
               ; (assoc c const-dict)
@@ -607,21 +609,22 @@
 (define ^label-orexit (^^label "Lor_exit"))
 
 (define code-gen-or
-  (lambda (pe env-size param-size)
+  (lambda (pe env-size param-size const-table)
     (with pe
           (lambda (or pes)
             (let* ((first-pes (get-all-but-last pes))
                   (last-pe (get-last pes))
                   (label-exit (^label-orexit))
+                  (SOB_FALSE (number->string (car (assoc-i #f const-table 2))))
                   (first-pes-code 
                    (apply string-append
                           (map (lambda (e)
                                  (string-append
-                                  (code-gen e env-size param-size)
-                                  "  CMP(R0, SOB_FALSE);" nl
+                                  (code-gen e env-size param-size const-table)
+                                  "  CMP(R0,"SOB_FALSE");" nl
                                   "  JUMP_NE(" label-exit ");" nl))
                                first-pes)))
-                  (last-pe-code (code-gen last-pe env-size param-size)))
+                  (last-pe-code (code-gen last-pe env-size param-size const-table)))
               (string-append
                "  /* or */" nl
                first-pes-code
@@ -637,18 +640,19 @@
 (define ^label-if3else (^^label "Lif3else"))
 (define ^label-if3exit (^^label "Lif3exit"))
 (define code-gen-if3
-  (lambda (e env-size param-size)
+  (lambda (e env-size param-size const-table)
     (with e
           (lambda (if3 test do-if-true do-if-false)
-            (let ((code-test (code-gen test env-size param-size))
-                  (code-dit (code-gen do-if-true env-size param-size))
-                  (code-dif (code-gen do-if-false env-size param-size))
+            (let ((code-test (code-gen test env-size param-size const-table))
+                  (code-dit (code-gen do-if-true env-size param-size const-table))
+                  (code-dif (code-gen do-if-false env-size param-size const-table))
+                  (SOB_FALSE (number->string (car (assoc-i #f const-table 2))))
                   (label-else (^label-if3else))
                   (label-exit (^label-if3exit)))
               (string-append
                "  /* if3 */"
                code-test nl ; when run, the result of the test will be in R0
-               "  CMP(R0, SOB_FALSE);" nl
+               "  CMP(R0,"SOB_FALSE");" nl
                "  JUMP_EQ(" label-else ");" nl
                code-dit nl
                "  JUMP(" label-exit ");" nl
@@ -670,7 +674,7 @@
 
 (define ^code-gen-lambda
   (lambda (type)
-    (lambda (e env-size param-size)
+    (lambda (e env-size param-size const-table)
       (let ((params (cond
                      ((or (eq? type 'opt) (eq? type 'simple)) (cadr e))
                      ((eq? type 'variadic) '())))
@@ -773,7 +777,7 @@
           (else "  /* error */"))
          nl
          "  /* code-gen of the lambda body */" nl
-         (code-gen body (+ env-size 1) (length params));
+         (code-gen body (+ env-size 1) (length params) const-table);
          "  /* end of code-gen for lambda body */" nl
          "  POP(FP);" nl
          "  RETURN;" nl
@@ -789,7 +793,7 @@
     (and (list? pe) (eq? (car pe) 'bvar))))
 
 (define code-gen-pvar
-  (lambda (e env-size param-size)
+  (lambda (e env-size param-size const-table)
     (with e
           (lambda (pvar var minor)
             (let ((minor-in-stack-str (number->string (+ minor 2))))
@@ -800,7 +804,7 @@
                ))))))
 
 (define code-gen-bvar
-  (lambda (e env-size param-size)
+  (lambda (e env-size param-size const-table)
     (with e
           (lambda (bvar var major minor)
             (string-append
@@ -817,7 +821,7 @@
     (and (list? pe) (eq? (car pe) 'applic))))
 
 (define code-gen-applic
-  (lambda (e env-size param-size)
+  (lambda (e env-size param-size const-table)
     (with e
           (lambda (applic proc args)
             (let ((args-num-string (number->string (+ (length args) 1)))) ;1 is added because of the extra Magic argument
@@ -827,11 +831,11 @@
                (apply string-append (map
                                      (lambda (arg)
                                        (string-append
-                                        (code-gen arg env-size param-size)
+                                        (code-gen arg env-size param-size const-table)
                                         "  PUSH(R0);" nl))
                                      (reverse args)))
                "  PUSH("args-num-string")" nl
-               (code-gen proc env-size param-size)
+               (code-gen proc env-size param-size const-table)
                "  CMP(IND(R0), T_CLOSURE);" nl 
                "  JUMP_NE("label-not-proc");" nl
                "  PUSH(INDD(R0,1));" nl
@@ -847,7 +851,7 @@
     (and (list? pe) (eq? (car pe) 'tc-applic))))
 
 (define code-gen-tc-applic
-  (lambda (e env-size param-size)
+  (lambda (e env-size param-size const-table)
     (with e
           (lambda (tc-applic proc args)
             (let ((args-num-string (number->string (+ (length args) 1))) ;Adding 1 because of the extra Magic argument
@@ -861,13 +865,13 @@
                (apply string-append (map
                                      (lambda (arg)
                                        (string-append
-                                        (code-gen arg env-size param-size)
+                                        (code-gen arg env-size param-size const-table)
                                         "  PUSH(R0);" nl
                                         ))
                                      (reverse args)))
                "  /* Done pushing arguments */" nl
                "  PUSH("args-num-string"); //Pushing the number of arguments" nl
-               (code-gen proc env-size param-size)
+               (code-gen proc env-size param-size const-table)
                "  CMP(INDD(R0,0),T_CLOSURE); //Make sure we got a closure" nl
                "  JUMP_NE("label-not-proc");" nl
                "  PUSH(INDD(R0,1)); //Push the environment onto the stack" nl
@@ -911,7 +915,7 @@
     (and (list? pe) (eq? (car pe) 'fvar))))
 
 (define code-gen-fvar
-  (lambda (pe env-size param-size)
+  (lambda (pe env-size param-size const-table)
     (with pe
           (lambda (fvar name)
             (cond
@@ -931,7 +935,7 @@
     (and (list? pe) (eq? (car pe) 'lambda-variadic))))
 
 ;(define code-gen-lambda-opt
-;  (lambda (pe env-size param-size)
+;  (lambda (pe env-size param-size const-table)
 ;    (with pe
 ;          (lambda (lambda-opt param rest body)
 ;            (
@@ -939,20 +943,20 @@
 (define code-gen-lambda-opt (^code-gen-lambda 'opt))
 (define code-gen-lambda-variadic (^code-gen-lambda 'variadic))
 (define code-gen
-  (lambda (pe env-size param-size)
+  (lambda (pe env-size param-size const-table)
     (cond
-     ((pe-pvar? pe) (code-gen-pvar pe env-size param-size)) 
-     ((pe-bvar? pe) (code-gen-bvar pe env-size param-size)) 
-     ((pe-seq? pe) (code-gen-seq pe env-size param-size))
-     ((pe-const? pe) (code-gen-const pe))
-     ((pe-or? pe) (code-gen-or pe env-size param-size))
-     ((pe-if3? pe) (code-gen-if3 pe env-size param-size))
-     ((pe-lambda-simple? pe) (code-gen-lambda-simple pe env-size param-size))
-     ((pe-applic? pe) (code-gen-applic pe env-size param-size))
-     ((pe-tc-applic? pe) (code-gen-tc-applic pe env-size param-size))
-     ((pe-fvar? pe) (code-gen-fvar pe env-size param-size))
-     ((pe-lambda-opt? pe) (code-gen-lambda-opt pe env-size param-size))
-     ((pe-lambda-variadic? pe) (code-gen-lambda-variadic pe env-size param-size))
+     ((pe-pvar? pe) (code-gen-pvar pe env-size param-size const-table)) 
+     ((pe-bvar? pe) (code-gen-bvar pe env-size param-size const-table)) 
+     ((pe-seq? pe) (code-gen-seq pe env-size param-size const-table))
+     ((pe-const? pe) (code-gen-const pe env-size param-size const-table))
+     ((pe-or? pe) (code-gen-or pe env-size param-size const-table))
+     ((pe-if3? pe) (code-gen-if3 pe env-size param-size const-table))
+     ((pe-lambda-simple? pe) (code-gen-lambda-simple pe env-size param-size const-table))
+     ((pe-applic? pe) (code-gen-applic pe env-size param-size const-table))
+     ((pe-tc-applic? pe) (code-gen-tc-applic pe env-size param-size const-table))
+     ((pe-fvar? pe) (code-gen-fvar pe env-size param-size const-table))
+     ((pe-lambda-opt? pe) (code-gen-lambda-opt pe env-size param-size const-table))
+     ((pe-lambda-variadic? pe) (code-gen-lambda-variadic pe env-size param-size const-table))
      (else (void))))) ;TODO: This needs to be replaced with an error message
 
 (define write-to-file
@@ -983,7 +987,7 @@
       ((or  (null? e) (boolean? e)) `(,e))
       ((or (number? e) (string? e) (void? e)) `(,e))
       ((pair? e)
-       `(,@(topo-srt-const (car e)) ,@(foo (cdr e)) ,e))
+       `(,@(topo-srt-const (car e)) ,@(topo-srt-const (cdr e)) ,e))
        ((vector? e)
         `(,@(apply append
                       (map topo-srt-const
@@ -1003,7 +1007,7 @@
        ((null? l) '())
        ((member (car l) (cdr l))
         (dedup-helper (cdr l)))
-       (else (cons (car l) (dedup-helper (cdr l))))))))
+       (else (cons (car l) (dedup-helper (cdr l)))))))
 
 (define extract-consts
   (lambda (pe)
@@ -1040,7 +1044,7 @@
         (cond
          ((number? curr)
           (consts->dict (cdr const-lst)
-                        (cons  `(,addr ,curr (\T_NUMBER ,curr)) acc-lst)
+                        (cons  `(,addr ,curr (\T_INTEGER ,curr)) acc-lst)
                         (+ addr 2)))
          ((string? curr)
           (let ((ascii-chars (map char->integer (string->list curr))))
@@ -1069,6 +1073,10 @@
                  ((number? x) (number->string x))))
          l)))
 
+(define get-consts-size
+  (lambda (dict)
+    (length (list->list-of-strings (apply append (map caddr dict))))))
+
 (define dict->consts-string
   (lambda (dict)
     (comma-sep (list->list-of-strings (apply append (map caddr dict))))))
@@ -1091,13 +1099,13 @@
            (pe-lst (map (lambda (expr)
                           (parse-full expr))
                         sexprs))
-           (const-dict (create-const-dict pe-lst 100))
+           (const-dict (create-consts-dict pe-lst 100))
            (mem-init (create-mem-prologue const-dict))
            (output-code 
             (apply string-append (map
                                   (lambda (x)
                                     (string-append
-                                     (code-gen x 0 0)
+                                     (code-gen x 0 0 const-dict)
                                      epilogue-sexpr))
                                   pe-lst)))
            (complete-code (string-append prologue mem-init output-code epilogue)))
@@ -1115,12 +1123,16 @@
 (define dict2 (create-consts-dict (map parse-full '((begin '(1 2 3 4 "abc")) (begin "abc"))) 100))
 (create-consts-string dict2) 
 
-(define d3 (create-consts-dict (map parse-full '((begin '(1 3 4 "abc")) (begin "abc") (begin '(1 23 "ad" "abc" 2 3)))) 100))
-(create-consts-dict (map parse-full '((begin '(1 2 3 4 5)))) 100)
-(define d2 (create-consts-dict (map parse-full '((begin 1 '()))) 100))
-(define d1 (process-consts (extract-consts (parse-full '(begin '(1))))))
-(process-consts (extract-consts (parse-full '(begin 1))))
-dict2
-(assoc-i 104 dict2 2)
-(process-consts (extract-consts (map parse-full '((begin '(1 #f 2 3 4 "abc")) (begin "abc") (begin '(1 23 "ad" "abc" 2 3))))))
-(create-consts-string d3)
+;(define d3 (create-consts-dict (map parse-full '((begin '(1 3 4 "abc")) (begin "abc") (begin '(1 23 "ad" "abc" 2 3)))) 100))
+;(create-consts-dict (map parse-full '((begin '(1 2 3 4 5)))) 100)
+;(define d2 (create-consts-dict (map parse-full '((begin 1 '()))) 100))
+;(define d1 (process-consts (extract-consts (parse-full '(begin '(1))))))
+;(process-consts (extract-consts (parse-full '(begin 1))))
+;dict2
+;(assoc-i 104 dict2 2)
+;(process-consts (extract-consts (map parse-full '((begin '(1 #f 2 3 4 "abc")) (begin "abc") (begin '(1 23 "ad" "abc" 2 3))))))
+;(create-consts-string d3)
+;(create-consts-string (create-consts-dict (map parse-full '(#f)) 100))
+;(process-consts (extract-consts (map parse-full '(#f))))
+;(parse-full '#f)
+
