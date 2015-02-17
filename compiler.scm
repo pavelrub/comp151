@@ -1,5 +1,6 @@
 (load "pattern-matcher.scm")
 
+
 (print-graph #f) ; display circular structures
 (print-gensym #f) ; print gensym as g1234
 (case-sensitive #f) ; ditto
@@ -521,15 +522,17 @@
    )))
 
 (define create-mem-prologue 
-  (lambda (consts-dict)
-    (let ((consts-str (create-consts-string consts-dict))
-          (num-of-consts (number->string (get-consts-size consts-dict)))
-          (first-addr (number->string (caar consts-dict))))
+  (lambda (consts-dict fvar-dict)
+    (let* ((consts-str (create-consts-string consts-dict))
+           (num-of-consts (get-consts-size consts-dict))
+           (num-of-fvars (get-fvar-size fvar-dict))
+           (first-addr (caar consts-dict))
+           (last-addr (+ first-addr num-of-consts num-of-fvars 1)))
       (string-append
        "  /* initializing the memory with constants found in the program */" nl
-       "  long mem_init["num-of-consts"] = {"consts-str"}; //The memory image of the constants" nl
-       "  memcpy(&ADDR("first-addr"), mem_init, sizeof(mem_init)); //Copying the array into memory" nl
-       "  MOV(IND(0),2000);" nl
+       "  long mem_init["(number->string num-of-consts)"] = {"consts-str"}; //The memory image of the constants" nl
+       "  memcpy(&ADDR("(number->string first-addr)"), mem_init, sizeof(mem_init)); //Copying the array into memory" nl
+       "  MOV(IND(0),"(number->string last-addr)"); //reserving space for fvars" nl
        "  /* end of memory initialization */" nl
        ))))
 
@@ -564,12 +567,12 @@
     (eq? (car pe) 'or)))
   
 (define code-gen-seq
-  (lambda (e env-size param-size const-table)
+  (lambda (e env-size param-size const-table fvar-table)
     (with e
           (lambda (seq exprs)
             (apply string-append
                    (map (lambda (pe)
-                          (code-gen pe env-size param-size const-table))
+                          (code-gen pe env-size param-size const-table fvar-table))
                         exprs))))))
 
 (define get-const-addr
@@ -577,7 +580,7 @@
     (cadr (assoc c dict))))
 
 (define code-gen-const
-  (lambda (e env-size param-size const-dict)
+  (lambda (e env-size param-size const-dict fvar-table)
     (with e
           (lambda (const c)
             (let ((addr (number->string (car (assoc-i c const-dict 2)))))
@@ -609,7 +612,7 @@
 (define ^label-orexit (^^label "Lor_exit"))
 
 (define code-gen-or
-  (lambda (pe env-size param-size const-table)
+  (lambda (pe env-size param-size const-table fvar-table)
     (with pe
           (lambda (or pes)
             (let* ((first-pes (get-all-but-last pes))
@@ -620,11 +623,11 @@
                    (apply string-append
                           (map (lambda (e)
                                  (string-append
-                                  (code-gen e env-size param-size const-table)
+                                  (code-gen e env-size param-size const-table fvar-table)
                                   "  CMP(R0,"SOB_FALSE");" nl
                                   "  JUMP_NE(" label-exit ");" nl))
                                first-pes)))
-                  (last-pe-code (code-gen last-pe env-size param-size const-table)))
+                  (last-pe-code (code-gen last-pe env-size param-size const-table fvar-table)))
               (string-append
                "  /* or */" nl
                first-pes-code
@@ -640,12 +643,12 @@
 (define ^label-if3else (^^label "Lif3else"))
 (define ^label-if3exit (^^label "Lif3exit"))
 (define code-gen-if3
-  (lambda (e env-size param-size const-table)
+  (lambda (e env-size param-size const-table fvar-table)
     (with e
           (lambda (if3 test do-if-true do-if-false)
-            (let ((code-test (code-gen test env-size param-size const-table))
-                  (code-dit (code-gen do-if-true env-size param-size const-table))
-                  (code-dif (code-gen do-if-false env-size param-size const-table))
+            (let ((code-test (code-gen test env-size param-size const-table fvar-table))
+                  (code-dit (code-gen do-if-true env-size param-size const-table fvar-table))
+                  (code-dif (code-gen do-if-false env-size param-size const-table fvar-table))
                   (SOB_FALSE (number->string (car (assoc-i #f const-table 2))))
                   (label-else (^label-if3else))
                   (label-exit (^label-if3exit)))
@@ -674,7 +677,7 @@
 
 (define ^code-gen-lambda
   (lambda (type)
-    (lambda (e env-size param-size const-table)
+    (lambda (e env-size param-size const-table fvar-table)
       (let ((params (cond
                      ((or (eq? type 'opt) (eq? type 'simple)) (cadr e))
                      ((eq? type 'variadic) '())))
@@ -777,7 +780,7 @@
           (else "  /* error */"))
          nl
          "  /* code-gen of the lambda body */" nl
-         (code-gen body (+ env-size 1) (length params) const-table);
+         (code-gen body (+ env-size 1) (length params) const-table fvar-table);
          "  /* end of code-gen for lambda body */" nl
          "  POP(FP);" nl
          "  RETURN;" nl
@@ -793,7 +796,7 @@
     (and (list? pe) (eq? (car pe) 'bvar))))
 
 (define code-gen-pvar
-  (lambda (e env-size param-size const-table)
+  (lambda (e env-size param-size const-table fvar-table)
     (with e
           (lambda (pvar var minor)
             (let ((minor-in-stack-str (number->string (+ minor 2))))
@@ -804,7 +807,7 @@
                ))))))
 
 (define code-gen-bvar
-  (lambda (e env-size param-size const-table)
+  (lambda (e env-size param-size const-table fvar-table)
     (with e
           (lambda (bvar var major minor)
             (string-append
@@ -821,7 +824,7 @@
     (and (list? pe) (eq? (car pe) 'applic))))
 
 (define code-gen-applic
-  (lambda (e env-size param-size const-table)
+  (lambda (e env-size param-size const-table fvar-table)
     (with e
           (lambda (applic proc args)
             (let ((args-num-string (number->string (+ (length args) 1)))) ;1 is added because of the extra Magic argument
@@ -831,11 +834,11 @@
                (apply string-append (map
                                      (lambda (arg)
                                        (string-append
-                                        (code-gen arg env-size param-size const-table)
+                                        (code-gen arg env-size param-size const-table fvar-table)
                                         "  PUSH(R0);" nl))
                                      (reverse args)))
                "  PUSH("args-num-string")" nl
-               (code-gen proc env-size param-size const-table)
+               (code-gen proc env-size param-size const-table fvar-table)
                "  CMP(IND(R0), T_CLOSURE);" nl 
                "  JUMP_NE("label-not-proc");" nl
                "  PUSH(INDD(R0,1));" nl
@@ -851,7 +854,7 @@
     (and (list? pe) (eq? (car pe) 'tc-applic))))
 
 (define code-gen-tc-applic
-  (lambda (e env-size param-size const-table)
+  (lambda (e env-size param-size const-table fvar-table)
     (with e
           (lambda (tc-applic proc args)
             (let ((args-num-string (number->string (+ (length args) 1))) ;Adding 1 because of the extra Magic argument
@@ -865,13 +868,13 @@
                (apply string-append (map
                                      (lambda (arg)
                                        (string-append
-                                        (code-gen arg env-size param-size const-table)
+                                        (code-gen arg env-size param-size const-table fvar-table)
                                         "  PUSH(R0);" nl
                                         ))
                                      (reverse args)))
                "  /* Done pushing arguments */" nl
                "  PUSH("args-num-string"); //Pushing the number of arguments" nl
-               (code-gen proc env-size param-size const-table)
+               (code-gen proc env-size param-size const-table fvar-table)
                "  CMP(INDD(R0,0),T_CLOSURE); //Make sure we got a closure" nl
                "  JUMP_NE("label-not-proc");" nl
                "  PUSH(INDD(R0,1)); //Push the environment onto the stack" nl
@@ -910,21 +913,6 @@
                ))))))
                
                
-(define pe-fvar?
-  (lambda (pe)
-    (and (list? pe) (eq? (car pe) 'fvar))))
-
-(define code-gen-fvar
-  (lambda (pe env-size param-size const-table)
-    (with pe
-          (lambda (fvar name)
-            (cond
-             ((eq? name 'cons)
-              (string-append
-               "  /* (fvar cons) */" nl
-               "  MOV(R0, PRIM_CONS);" nl
-               "  /* end of (fvar cons) */;" nl
-               )))))))
 
 (define pe-lambda-opt?
   (lambda (pe)
@@ -934,8 +922,52 @@
   (lambda (pe)
     (and (list? pe) (eq? (car pe) 'lambda-variadic))))
 
+(define code-gen-define
+  (lambda (pe env-size param-size const-table fvar-table)
+    (with pe
+          (lambda (def var value)
+            (let ((fvar-addr (car (assoc-i (cadr var) fvar-table 2)))
+                  (SOB_VOID (car (assoc-i *void-object* const-table 2))))
+              (string-append
+               "  /* code-gen for (define a e) */" nl
+               "  /* evaluating the value of e */" nl
+               (code-gen value env-size param-size const-table fvar-table)
+               "  /* finished evaluating the value of e */" nl
+               "  MOV(IND("(number->string fvar-addr)"),R0); //setting the fvar value in the memory" nl
+               "  MOV(R0,"(number->string SOB_VOID)"); //define should return #<void>" nl 
+               "  /* end of code-gen for (define a e) */" nl
+               ))))))
+
+(define pe-define?
+  (lambda (pe)
+    (and (list? pe) (eq? (car pe) 'define))))
+
+(define code-gen-fvar
+  (lambda (pe env-size param-size consts-table fvar-table)
+    (with pe
+          (lambda (fvar name)
+            (cond ((eq? name 'cons)
+                   (string-append
+                    "  /* (fvar cons) */" nl
+                    "  MOV(R0, PRIM_CONS);" nl
+                    "  /* end of (fvar cons) */;" nl))
+                  (else 
+                   (let ((fvar-addr (car (assoc-i name fvar-table 2))))
+                     (if fvar-addr
+                         (string-append
+                          "  /* (fvar "(symbol->string name)") */" nl
+                          "  MOV(R0,IND("(number->string fvar-addr)")); //returning the value of the fvar" nl
+                          "  /* end of (fvar "(symbol->string name)") */" nl
+                          )
+                         (string-append
+                          " /* AN ERROR OF SOME SORT!! TODO!!! */"
+                          )))))))))
+                     
+(define pe-fvar?
+  (lambda (pe)
+    (and (list? pe) (eq? (car pe) 'fvar))))
 ;(define code-gen-lambda-opt
-;  (lambda (pe env-size param-size const-table)
+;  (lambda (pe env-size param-size const-table fvar-table)
 ;    (with pe
 ;          (lambda (lambda-opt param rest body)
 ;            (
@@ -943,20 +975,22 @@
 (define code-gen-lambda-opt (^code-gen-lambda 'opt))
 (define code-gen-lambda-variadic (^code-gen-lambda 'variadic))
 (define code-gen
-  (lambda (pe env-size param-size const-table)
+  (lambda (pe env-size param-size const-table fvar-table)
     (cond
-     ((pe-pvar? pe) (code-gen-pvar pe env-size param-size const-table)) 
-     ((pe-bvar? pe) (code-gen-bvar pe env-size param-size const-table)) 
-     ((pe-seq? pe) (code-gen-seq pe env-size param-size const-table))
-     ((pe-const? pe) (code-gen-const pe env-size param-size const-table))
-     ((pe-or? pe) (code-gen-or pe env-size param-size const-table))
-     ((pe-if3? pe) (code-gen-if3 pe env-size param-size const-table))
-     ((pe-lambda-simple? pe) (code-gen-lambda-simple pe env-size param-size const-table))
-     ((pe-applic? pe) (code-gen-applic pe env-size param-size const-table))
-     ((pe-tc-applic? pe) (code-gen-tc-applic pe env-size param-size const-table))
-     ((pe-fvar? pe) (code-gen-fvar pe env-size param-size const-table))
-     ((pe-lambda-opt? pe) (code-gen-lambda-opt pe env-size param-size const-table))
-     ((pe-lambda-variadic? pe) (code-gen-lambda-variadic pe env-size param-size const-table))
+     ((pe-pvar? pe) (code-gen-pvar pe env-size param-size const-table fvar-table)) 
+     ((pe-bvar? pe) (code-gen-bvar pe env-size param-size const-table fvar-table)) 
+     ((pe-seq? pe) (code-gen-seq pe env-size param-size const-table fvar-table))
+     ((pe-const? pe) (code-gen-const pe env-size param-size const-table fvar-table))
+     ((pe-or? pe) (code-gen-or pe env-size param-size const-table fvar-table))
+     ((pe-if3? pe) (code-gen-if3 pe env-size param-size const-table fvar-table))
+     ((pe-lambda-simple? pe) (code-gen-lambda-simple pe env-size param-size const-table fvar-table))
+     ((pe-applic? pe) (code-gen-applic pe env-size param-size const-table fvar-table))
+     ((pe-tc-applic? pe) (code-gen-tc-applic pe env-size param-size const-table fvar-table))
+     ((pe-fvar? pe) (code-gen-fvar pe env-size param-size const-table fvar-table))
+     ((pe-lambda-opt? pe) (code-gen-lambda-opt pe env-size param-size const-table fvar-table))
+     ((pe-lambda-variadic? pe) (code-gen-lambda-variadic pe env-size param-size const-table fvar-table))
+     ((pe-define? pe) (code-gen-define pe env-size param-size const-table fvar-table))
+     ((pe-fvar? pe) (code-gen-fvar pe env-size param-size const-table fvar-table))
      (else (void))))) ;TODO: This needs to be replaced with an error message
 
 (define write-to-file
@@ -1050,7 +1084,7 @@
     (cond
      ((null? fvar-lst) (reverse acc-lst))
      (else
-      (let ((curr (car fvars-lst)))
+      (let ((curr (car fvar-lst)))
         (fvars->dict (cdr fvar-lst)
                      (cons `(,addr ,curr) acc-lst)
                      (+ addr 1)))))))
@@ -1098,6 +1132,10 @@
                  ((number? x) (number->string x))))
          l)))
 
+(define get-fvar-size
+  (lambda (dict)
+    (length dict)))
+
 (define get-consts-size
   (lambda (dict)
     (length (list->list-of-strings (apply append (map caddr dict))))))
@@ -1118,19 +1156,26 @@
   (lambda (dict)
       (dict->consts-string dict)))
 
+(define create-fvar-dict
+  (lambda (pes addr)
+    (fvars->dict (process-fvars (extract-fvars pes)) '() addr)))
+
 (define compile-scheme-file
   (lambda (source target)
     (let* ((sexprs (file->sexprs source))
            (pe-lst (map (lambda (expr)
                           (parse-full expr))
                         sexprs))
-           (const-dict (create-consts-dict pe-lst 100))
-           (mem-init (create-mem-prologue const-dict))
+           (mem-init-addr 100)
+           (const-dict (create-consts-dict pe-lst mem-init-addr))
+           (consts-length (get-consts-size const-dict))
+           (fvar-dict (create-fvar-dict pe-lst (+ mem-init-addr consts-length)))
+           (mem-init (create-mem-prologue const-dict fvar-dict))
            (output-code 
             (apply string-append (map
                                   (lambda (x)
                                     (string-append
-                                     (code-gen x 0 0 const-dict)
+                                     (code-gen x 0 0 const-dict fvar-dict)
                                      epilogue-sexpr))
                                   pe-lst)))
            (complete-code (string-append prologue mem-init output-code epilogue)))
@@ -1142,11 +1187,6 @@
         (cons `(,(integer->char remaining) ,(+ addr remaining) (\T_CHAR ,remaining)) (create-abc-dict addr (- remaining 1)))
         '())))
 
-(define abc-dict (create-abc-dict 10 255))
-(parse-full '(begin 1 2 3 4 5))
-(define pes (map parse-full '((begin '(1 2 3 4 "abc")) (begin "abc"))))
-(define dict2 (create-consts-dict (map parse-full '((begin '(1 2 3 4 "abc")) (begin "abc"))) 100))
-(create-consts-string dict2) 
 
 ;(define d3 (create-consts-dict (map parse-full '((begin '(1 3 4 "abc")) (begin "abc") (begin '(1 23 "ad" "abc" 2 3)))) 100))
 ;(create-consts-dict (map parse-full '((begin '(1 2 3 4 5)))) 100)
@@ -1169,9 +1209,10 @@
 ;(create-consts-dict (process-consts (extract-consts (parse-full '(begin 'm)))) 100)
 ;(define d1 (create-consts-dict (map parse-full '((begin 'm))) 100))
 ;(create-consts-string d1)
-(define d2 (create-consts-dict (map parse-full (file->sexprs "tests/symbols.scm")) 100))
-(create-consts-string d2)
-d2
-(parse-full '(#(1 2 3)))
-(define f1 (process-fvars (extract-fvars (parse-full '(define fact (lambda (n) (if (zero? n) 1 (* n (fact (- n 1))))))))))
-(fvars->dict f1 '() 200)
+;(define d2 (create-consts-dict (map parse-full (file->sexprs "tests/symbols.scm")) 100))
+;(create-consts-string d2)
+;d2
+;(parse-full '(#(1 2 3)))
+;(define f1 (process-fvars (extract-fvars (parse-full '(define fact (lambda (n) (if (zero? n) 1 (* n (fact (- n 1))))))))))
+;(fvars->dict f1 '() 200)
+(fvars->dict (process-fvars (extract-fvars (map parse-full (file->sexprs "tests/define.scm")))) '() 200)
