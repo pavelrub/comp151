@@ -553,19 +553,6 @@
    "  /* done printing the content of R0 */" nl
    ))
    
-
-(define pe-seq?
-  (lambda (pe)
-    (and (list? pe) (eq? (car pe) 'seq))))
-
-(define pe-const?
-  (lambda (pe)
-    (eq? (car pe) 'const)))
-
-(define pe-or?
-  (lambda (pe)
-    (eq? (car pe) 'or)))
-  
 (define code-gen-seq
   (lambda (e env-size param-size const-table fvar-table)
     (with e
@@ -636,10 +623,6 @@
                "  /* end of or*/" 
                nl))))))
                   
-(define pe-if3?
-  (lambda (pe)
-    (and (list? pe) (eq? (car pe) 'if3))))
-                               
 (define ^label-if3else (^^label "Lif3else"))
 (define ^label-if3exit (^^label "Lif3exit"))
 (define code-gen-if3
@@ -664,11 +647,6 @@
                label-exit ":" nl
                "  /* end of if3 */"
                nl))))))
-
-(define pe-lambda-simple?
-  (lambda (pe)
-    (and (list? pe) (eq? (car pe) 'lambda-simple))))
-
 (define ^label-lambda-code (^^label "Llambdacode"))
 (define ^label-lambda-exit (^^label "Llambdaexit"))
 (define ^label-loop (^^label "Lloop"))
@@ -786,15 +764,6 @@
          "  RETURN;" nl
          label-exit":" nl)))))
 
-
-(define pe-pvar?
-  (lambda (pe)
-    (and (list? pe) (eq? (car pe) 'pvar))))
-
-(define pe-bvar?
-  (lambda (pe)
-    (and (list? pe) (eq? (car pe) 'bvar))))
-
 (define code-gen-pvar
   (lambda (e env-size param-size const-table fvar-table)
     (with e
@@ -819,10 +788,6 @@
              )))))
            
             
-(define pe-applic?
-  (lambda (pe)
-    (and (list? pe) (eq? (car pe) 'applic))))
-
 (define code-gen-applic
   (lambda (e env-size param-size const-table fvar-table)
     (with e
@@ -848,10 +813,6 @@
                "  DROP(R1);" nl
                " /* end of applic */" nl
                ))))))
-
-(define pe-tc-applic?
-  (lambda (pe)
-    (and (list? pe) (eq? (car pe) 'tc-applic))))
 
 (define code-gen-tc-applic
   (lambda (e env-size param-size const-table fvar-table)
@@ -913,15 +874,6 @@
                ))))))
                
                
-
-(define pe-lambda-opt?
-  (lambda (pe)
-    (and (list? pe) (eq? (car pe) 'lambda-opt))))
-
-(define pe-lambda-variadic?
-  (lambda (pe)
-    (and (list? pe) (eq? (car pe) 'lambda-variadic))))
-
 (define code-gen-define
   (lambda (pe env-size param-size const-table fvar-table)
     (with pe
@@ -938,9 +890,6 @@
                "  /* end of code-gen for (define a e) */" nl
                ))))))
 
-(define pe-define?
-  (lambda (pe)
-    (and (list? pe) (eq? (car pe) 'define))))
 
 (define code-gen-fvar
   (lambda (pe env-size param-size consts-table fvar-table)
@@ -963,14 +912,25 @@
                           " /* AN ERROR OF SOME SORT!! TODO!!! */"
                           )))))))))
                      
-(define pe-fvar?
-  (lambda (pe)
-    (and (list? pe) (eq? (car pe) 'fvar))))
-;(define code-gen-lambda-opt
-;  (lambda (pe env-size param-size const-table fvar-table)
-;    (with pe
-;          (lambda (lambda-opt param rest body)
-;            (
+(define ^pe-??
+  (lambda (tag)
+    (lambda (pe)
+      (and (list? pe) (eq? (car pe) tag)))))
+
+(define pe-fvar? (^pe-?? 'fvar))
+(define pe-pvar? (^pe-?? 'pvar))
+(define pe-bvar? (^pe-?? 'bvar))
+(define pe-seq? (^pe-?? 'seq))
+(define pe-const? (^pe-?? 'const))
+(define pe-or? (^pe-?? 'or))
+(define pe-if3? (^pe-?? 'if3))
+(define pe-lambda-simple? (^pe-?? 'lambda-simple))
+(define pe-applic? (^pe-?? 'applic))
+(define pe-tc-applic? (^pe-?? 'tc-applic))
+(define pe-lambda-opt? (^pe-?? 'lambda-opt))
+(define pe-lambda-variadic? (^pe-?? 'lambda-variadic))
+(define pe-define? (^pe-?? 'define))
+
 (define code-gen-lambda-simple (^code-gen-lambda 'simple))
 (define code-gen-lambda-opt (^code-gen-lambda 'opt))
 (define code-gen-lambda-variadic (^code-gen-lambda 'variadic))
@@ -987,7 +947,6 @@
        ((pe-lambda-simple? pe) (apply code-gen-lambda-simple params))
        ((pe-applic? pe) (apply code-gen-applic params))
        ((pe-tc-applic? pe) (apply code-gen-tc-applic params))
-       ((pe-fvar? pe) (apply code-gen-fvar params))
        ((pe-lambda-opt? pe) (apply code-gen-lambda-opt params))
        ((pe-lambda-variadic? pe) (apply code-gen-lambda-variadic params))
        ((pe-define? pe) (apply code-gen-define params))
