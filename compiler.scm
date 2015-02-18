@@ -467,6 +467,8 @@
 (define label-null?-done "L_Prim_null_done")
 (define label-pair?-code "L_Prim_pair_code")
 (define label-pair?-done "L_Prim_pair_done")
+(define label-integer?-code "L_Prim_integer_code")
+(define label-integer?-done "L_Prim_integer_done")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -716,6 +718,26 @@
        "  POP(FP);" nl
        "  RETURN;" nl
        "  /* end of pair? code */" nl
+       nl
+       "  /* integer? code */" nl
+       label-integer?-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  PUSH(R1);" nl
+       "  CALL(IS_SOB_INTEGER);" nl
+       "  DROP(1);" nl
+       "  MOV(R1, IMM(R0));" nl
+       "  MOV(R0, SOB_FALSE);" nl
+       "  CMP(R1, IMM(1));" nl
+       "  JUMP_NE("label-integer?-done");" nl
+       "  MOV(R0, SOB_TRUE);" nl
+       label-integer?-done":" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of integer? code */" nl
 
        label-cont":" nl
        "  NOP;" nl
@@ -730,6 +752,7 @@
        (gen-closure-def 'cdr label-cdr-code fvar-table)
        (gen-closure-def 'null? label-null?-code fvar-table)
        (gen-closure-def 'pair? label-pair?-code fvar-table)
+       (gen-closure-def 'integer? label-integer?-code fvar-table)
        ))))
 
 (define place-prim-ptr
