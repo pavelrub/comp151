@@ -462,6 +462,7 @@
 (define label-bin-eq-code "L_Prim_bin_eq")
 (define label-bin-eq-done "L_Prim_bin_eq_done")
 (define label-car-code "L_Prim_car_code")
+(define label-cdr-code "L_Prim_cdr_code")
 (define ^label-cont (^^label "L_cont_"))
 (define prologue
   (let ((label-cont (^label-cont)))
@@ -656,6 +657,16 @@
      "  RETURN;" nl
      "  /* end of car code */" nl
      nl
+     "  /* cdr code */" nl
+     label-cdr-code":" nl
+     "  PUSH(FP);" nl
+     "  MOV(FP,SP);" nl
+     "  MOV(R1, FPARG(2));" nl
+     "  MOV(R0, INDD(R1,2));" nl
+     "  POP(FP);" nl
+     "  RETURN;" nl
+     "  /* end of cdr code */" nl
+     nl
      label-cont":" nl
      "  /* cons closure definition */" nl
      "  MOV(IND(10), T_CLOSURE); //type" nl
@@ -712,6 +723,13 @@
      "  MOV(IND(33), LABEL("label-car-code")); //code address" nl
      "  #define PRIM_CAR 31" nl
      "  /* end of car closure definition */" nl
+     nl
+     "  /* cdr closure definition */" nl
+     "  MOV(IND(34), T_CLOSURE); //type" nl
+     "  MOV(IND(35), 308618859); //env" nl
+     "  MOV(IND(36), LABEL("label-cdr-code")); //code address" nl
+     "  #define PRIM_CDR 34" nl
+     "  /* end of cdr closure definition */" nl
    )))
 
 (define create-mem-prologue 
@@ -1128,6 +1146,11 @@
                     "  /* (fvar car) */" nl
                     "  MOV(R0, PRIM_CAR);" nl
                     "  /* end of (fvar car) */" nl))
+                  ((eq? name 'cdr)
+                   (string-append
+                    "  /* (fvar cdr) */" nl
+                    "  MOV(R0, PRIM_CDR);" nl
+                    "  /* end of (fvar cdr) */" nl))
                   (else 
                    (let ((fvar-addr (car (assoc-i name fvar-table 2))))
                      (if fvar-addr
