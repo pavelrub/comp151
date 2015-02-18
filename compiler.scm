@@ -456,6 +456,7 @@
 (define label-bin-plus-code "L_Prim_bin_plus")
 (define label-bin-minus-code "L_Prim_bin_minus")
 (define label-bin-mult-code "L_Prim_bin_mult")
+(define label-bin-div-code "L_Prim_bin_div")
 (define ^label-cont (^^label "L_cont_"))
 (define prologue
   (let ((label-cont (^label-cont)))
@@ -578,6 +579,26 @@
      "  RETURN;" nl
      "  /* end of bin* code */" nl
      nl 
+     "  /* bin/ code */" nl
+     label-bin-div-code":" nl
+     "  PUSH(FP);" nl
+     "  MOV(FP,SP);" nl
+     "  PUSH(R1); //saving R1" nl
+     "  PUSH(R2); //saving R2" nl
+     "  MOV(R1, FPARG(2));" nl
+     "  MOV(R1, INDD(R1,1));" nl
+     "  MOV(R2, FPARG(3));" nl
+     "  MOV(R2, INDD(R2,1));" nl
+     "  DIV(R1, IMM(R2));" nl
+     "  PUSH(IMM(R1));" nl
+     "  CALL(MAKE_SOB_INTEGER);" nl
+     "  DROP(IMM(1));" nl
+     "  POP(R2); //restoring R2" nl
+     "  POP(R1); //restoring R1" nl
+     "  POP(FP); //restoring FP" nl
+     "  RETURN;" nl
+     "  /* end of bin/ code */" nl
+     nl 
      label-cont":" nl
      "  /* cons closure definition */" nl
      "  MOV(IND(10), T_CLOSURE); //type" nl
@@ -606,6 +627,13 @@
      "  MOV(IND(21), LABEL("label-bin-mult-code")); //code address" nl
      "  #define PRIM_BIN_MULT 19" nl
      "  /* end of bin* closure definition */" nl
+     nl
+     "  /* bin/ closure definition */" nl
+     "  MOV(IND(22), T_CLOSURE); //type" nl
+     "  MOV(IND(23), 308618859); //env" nl
+     "  MOV(IND(24), LABEL("label-bin-div-code")); //code address" nl
+     "  #define PRIM_BIN_DIV 22" nl
+     "  /* end of bin/ closure definition */" nl
    )))
 
 (define create-mem-prologue 
@@ -1002,6 +1030,11 @@
                     "  /* (fvar bin*) */" nl
                     "  MOV(R0, PRIM_BIN_MULT);" nl
                     "  /* end of (fvar bin*) */" nl))
+                  ((eq? name 'bin/)
+                   (string-append
+                    "  /* (fvar bin/) */" nl
+                    "  MOV(R0, PRIM_BIN_DIV);" nl
+                    "  /* end of (fvar bin/) */" nl))
                   (else 
                    (let ((fvar-addr (car (assoc-i name fvar-table 2))))
                      (if fvar-addr
