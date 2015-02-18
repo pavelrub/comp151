@@ -471,6 +471,7 @@
 (define label-integer?-done "L_Prim_integer_done")
 (define label-procedure?-code "L_Prim_procedure_code")
 (define label-procedure?-done "L_Prim_procedure_done")
+(define label-set-car-code "L_Prim_set_car_code")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -760,6 +761,25 @@
        "  POP(FP);" nl
        "  RETURN;" nl
        "  /* end of procedure? code */" nl
+       nl
+       label-set-car-code":" nl
+       "  /* set-car! code */" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  PUSH(R2);" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  MOV(R2, FPARG(3));" nl
+       ;"  INFO;" nl
+       "  MOV(R1, INDD(IMM(R1),1));" nl
+       ;"  INFO;" nl
+       "  MOV(IND(R1), R2);" nl
+       "  POP(R2);" nl
+       "  POP(R1);" nl
+       "  MOV(R0,SOB_VOID);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of set-car! code */" nl
 
        label-cont":" nl
        "  NOP;" nl
@@ -776,6 +796,7 @@
        (gen-closure-def 'pair? label-pair?-code fvar-table)
        (gen-closure-def 'integer? label-integer?-code fvar-table)
        (gen-closure-def 'procedure? label-procedure?-code fvar-table)
+       (gen-closure-def 'set-car! label-set-car-code fvar-table)
        ))))
 
 (define place-prim-ptr
@@ -840,6 +861,7 @@
    "  PUSH(R0);" nl
    "  CALL(WRITE_SOB);" nl ;TODO: This assumes the value of *R0 is a Scheme Object. What if it's not? 
    "  CALL(NEWLINE);" nl
+   "  DROP(1);" nl
    "  /* done printing the content of R0 */" nl
    ))
    
