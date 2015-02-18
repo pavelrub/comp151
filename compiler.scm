@@ -464,273 +464,252 @@
 (define label-car-code "L_Prim_car_code")
 (define label-cdr-code "L_Prim_cdr_code")
 (define ^label-cont (^^label "L_cont_"))
-(define prologue
-  (let ((label-cont (^label-cont)))
-    (string-append
-     "#include <stdio.h>" nl
-     "#include <stdlib.h>" nl
-     "#define DO_SHOW 2" nl
-     "#include \"arch/cisc.h\"" nl
-     "#include \"arch/info.h\"" nl
-     "" nl
-     "int main()" nl
-     "{" nl
-     "  int i,j;" nl ;Declared here because otherwise there could be multiple declerations in a file
-     "  START_MACHINE;" nl
-     "  JUMP(CONTINUE);" nl
-     "#include \"arch/char.lib\"" nl
-     "#include \"arch/io.lib\"" nl
-     "#include \"arch/math.lib\"" nl
-     "#include \"arch/string.lib\"" nl
-     "#include \"arch/system.lib\"" nl
-     "#include \"arch/scheme.lib\"" nl
-     nl
-     label-not-proc":" nl
-     "  JUMP("label-end-program");" nl
-     "CONTINUE:" nl
-     "  /* definitions of some basic scheme objects */" nl
-     "  /* this might be replaced later when symbols are properly implemented */" nl
-     nl
-     "  /* allocating 1000 memory cells */" nl
-     "  ADD(IND(0), 1000);" nl 
-     nl
-     "  /* Void object definition */" nl
-     "  MOV(IND(1), T_VOID);" nl
-     "  #define SOB_VOID 1" nl
-     nl
-     "  /* Null (empty list) definition */" nl
-     "  MOV(IND(2), T_NIL);" nl 
-     "  #define SOB_NIL 2" nl 
-     nl
-     "  /* #f definition */" nl
-     "  MOV(IND(3), T_BOOL);" nl
-     "  MOV(IND(4), 0);" nl
-     "  #define SOB_FALSE 3" nl 
-     nl
-     "  /* #t definition */" nl
-     "  MOV(IND(5), T_BOOL);" nl
-     "  MOV(IND(6), 1);" nl
-     "  #define SOB_TRUE 5" nl
-     nl
-     "  /* cons code */" nl
-     "  JUMP("label-cont"); //skipping over the actual (cons) execution, because we only want to define it" nl
-     label-cons-code":" nl
-     "  PUSH(FP);" nl
-     "  MOV(FP,SP);"  nl
-     "  PUSH(FPARG(3)); //The cdr" nl
-     "  PUSH(FPARG(2)); //The car" nl
-     "  CALL(MAKE_SOB_PAIR);" nl
-     "  DROP(2);" nl
-     "  POP(FP);" nl
-     "  RETURN;" nl
-     "  /* end of cons code */" nl
-     nl
-     "  /* bin+ code */" nl
-     label-bin-plus-code":" nl
-     "  PUSH(FP);" nl
-     "  MOV(FP,SP);" nl
-     "  PUSH(R1); //saving R1" nl
-     "  PUSH(R2); //saving R2" nl
-     "  MOV(R1, FPARG(2));" nl
-     "  MOV(R1, INDD(R1,1));" nl
-     "  MOV(R2, FPARG(3));" nl
-     "  MOV(R2, INDD(R2,1));" nl
-     "  ADD(R1, IMM(R2));" nl
-     "  PUSH(IMM(R1));" nl
-     "  CALL(MAKE_SOB_INTEGER);" nl
-     "  DROP(IMM(1));" nl
-     "  POP(R2); //restoring R2" nl
-     "  POP(R1); //restoring R1" nl
-     "  POP(FP); //restoring FP" nl
-     "  RETURN;" nl
-     "  /* end of bin+ code */" nl
-     nl 
-     "  /* bin- code */" nl
-     label-bin-minus-code":" nl
-     "  PUSH(FP);" nl
-     "  MOV(FP,SP);" nl
-     "  PUSH(R1); //saving R1" nl
-     "  PUSH(R2); //saving R2" nl
-     "  MOV(R1, FPARG(2));" nl
-     "  MOV(R1, INDD(R1,1));" nl
-     "  MOV(R2, FPARG(3));" nl
-     "  MOV(R2, INDD(R2,1));" nl
-     "  SUB(R1, IMM(R2));" nl
-     "  PUSH(IMM(R1));" nl
-     "  CALL(MAKE_SOB_INTEGER);" nl
-     "  DROP(IMM(1));" nl
-     "  POP(R2); //restoring R2" nl
-     "  POP(R1); //restoring R1" nl
-     "  POP(FP); //restoring FP" nl
-     "  RETURN;" nl
-     "  /* end of bin- code */" nl
-     nl 
-     "  /* bin* code */" nl
-     label-bin-mult-code":" nl
-     "  PUSH(FP);" nl
-     "  MOV(FP,SP);" nl
-     "  PUSH(R1); //saving R1" nl
-     "  PUSH(R2); //saving R2" nl
-     "  MOV(R1, FPARG(2));" nl
-     "  MOV(R1, INDD(R1,1));" nl
-     "  MOV(R2, FPARG(3));" nl
-     "  MOV(R2, INDD(R2,1));" nl
-     "  MUL(R1, IMM(R2));" nl
-     "  PUSH(IMM(R1));" nl
-     "  CALL(MAKE_SOB_INTEGER);" nl
-     "  DROP(IMM(1));" nl
-     "  POP(R2); //restoring R2" nl
-     "  POP(R1); //restoring R1" nl
-     "  POP(FP); //restoring FP" nl
-     "  RETURN;" nl
-     "  /* end of bin* code */" nl
-     nl 
-     "  /* bin/ code */" nl
-     label-bin-div-code":" nl
-     "  PUSH(FP);" nl
-     "  MOV(FP,SP);" nl
-     "  PUSH(R1); //saving R1" nl
-     "  PUSH(R2); //saving R2" nl
-     "  MOV(R1, FPARG(2));" nl
-     "  MOV(R1, INDD(R1,1));" nl
-     "  MOV(R2, FPARG(3));" nl
-     "  MOV(R2, INDD(R2,1));" nl
-     "  DIV(R1, IMM(R2));" nl
-     "  PUSH(IMM(R1));" nl
-     "  CALL(MAKE_SOB_INTEGER);" nl
-     "  DROP(IMM(1));" nl
-     "  POP(R2); //restoring R2" nl
-     "  POP(R1); //restoring R1" nl
-     "  POP(FP); //restoring FP" nl
-     "  RETURN;" nl
-     "  /* end of bin/ code */" nl
-     nl 
-     "  /* bin< code */" nl
-     label-bin-less-code":" nl
-     "  PUSH(FP);" nl
-     "  MOV(FP,SP);" nl
-     "  PUSH(R1); //saving R1" nl
-     "  PUSH(R2); //saving R2" nl
-     "  MOV(R1, FPARG(2));" nl
-     "  MOV(R1, INDD(R1,1));" nl
-     "  MOV(R2, FPARG(3));" nl
-     "  MOV(R2, INDD(R2,1));" nl
-     "  MOV(R0, SOB_FALSE);" nl
-     "  CMP(IMM(R1),IMM(R2));" nl
-     "  JUMP_GE("label-bin-less-done");" nl
-     "  MOV(R0, SOB_TRUE);" nl
-     label-bin-less-done":" nl
-     "  POP(R2); //restoring R2" nl
-     "  POP(R1); //restoring R1" nl
-     "  POP(FP); //restoring FP" nl
-     "  RETURN;" nl
-     "  /* end of bin< code */" nl
-     nl 
-     "  /* bin= code */" nl
-     label-bin-eq-code":" nl
-     "  PUSH(FP);" nl
-     "  MOV(FP,SP);" nl
-     "  PUSH(R1); //saving R1" nl
-     "  PUSH(R2); //saving R2" nl
-     "  MOV(R1, FPARG(2));" nl
-     "  MOV(R1, INDD(R1,1));" nl
-     "  MOV(R2, FPARG(3));" nl
-     "  MOV(R2, INDD(R2,1));" nl
-     "  MOV(R0, SOB_FALSE);" nl
-     "  CMP(IMM(R1),IMM(R2));" nl
-     "  JUMP_NE("label-bin-eq-done");" nl
-     "  MOV(R0, SOB_TRUE);" nl
-     label-bin-eq-done":" nl
-     "  POP(R2); //restoring R2" nl
-     "  POP(R1); //restoring R1" nl
-     "  POP(FP); //restoring FP" nl
-     "  RETURN;" nl
-     "  /* end of bin= code */" nl
-     nl 
-     "  /* car code */" nl
-     label-car-code":" nl
-     "  PUSH(FP);" nl
-     "  MOV(FP,SP);" nl
-     "  MOV(R1, FPARG(2));" nl
-     "  MOV(R0, INDD(R1,1));" nl
-     "  POP(FP);" nl
-     "  RETURN;" nl
-     "  /* end of car code */" nl
-     nl
-     "  /* cdr code */" nl
-     label-cdr-code":" nl
-     "  PUSH(FP);" nl
-     "  MOV(FP,SP);" nl
-     "  MOV(R1, FPARG(2));" nl
-     "  MOV(R0, INDD(R1,2));" nl
-     "  POP(FP);" nl
-     "  RETURN;" nl
-     "  /* end of cdr code */" nl
-     nl
-     label-cont":" nl
-     "  /* cons closure definition */" nl
-     "  MOV(IND(10), T_CLOSURE); //type" nl
-     "  MOV(IND(11), 308618859); //env (there is no env when calling cons, so this is just a random number [my id])" nl
-     "  MOV(IND(12), LABEL("label-cons-code")); //code address" nl
-     "  #define PRIM_CONS 10" nl
-     "  /* end of cons closure definition */" nl
-     nl
-     "  /* bin+ closure definition */" nl
-     "  MOV(IND(13), T_CLOSURE); //type" nl
-     "  MOV(IND(14), 308618859); //env" nl
-     "  MOV(IND(15), LABEL("label-bin-plus-code")); //code address" nl
-     "  #define PRIM_BIN_PLUS 13" nl
-     "  /* end of bin+ closure definition */" nl
-     nl
-     "  /* bin- closure definition */" nl
-     "  MOV(IND(16), T_CLOSURE); //type" nl
-     "  MOV(IND(17), 308618859); //env" nl
-     "  MOV(IND(18), LABEL("label-bin-minus-code")); //code address" nl
-     "  #define PRIM_BIN_MINUS 16" nl
-     "  /* end of bin- closure definition */" nl
-     nl
-     "  /* bin* closure definition */" nl
-     "  MOV(IND(19), T_CLOSURE); //type" nl
-     "  MOV(IND(20), 308618859); //env" nl
-     "  MOV(IND(21), LABEL("label-bin-mult-code")); //code address" nl
-     "  #define PRIM_BIN_MULT 19" nl
-     "  /* end of bin* closure definition */" nl
-     nl
-     "  /* bin/ closure definition */" nl
-     "  MOV(IND(22), T_CLOSURE); //type" nl
-     "  MOV(IND(23), 308618859); //env" nl
-     "  MOV(IND(24), LABEL("label-bin-div-code")); //code address" nl
-     "  #define PRIM_BIN_DIV 22" nl
-     "  /* end of bin/ closure definition */" nl
-     nl
-     "  /* bin< closure definition */" nl
-     "  MOV(IND(25), T_CLOSURE); //type" nl
-     "  MOV(IND(26), 308618859); //env" nl
-     "  MOV(IND(27), LABEL("label-bin-less-code")); //code address" nl
-     "  #define PRIM_BIN_LESS 25" nl
-     "  /* end of bin< closure definition */" nl
-     nl
-     "  /* bin= closure definition */" nl
-     "  MOV(IND(28), T_CLOSURE); //type" nl
-     "  MOV(IND(29), 308618859); //env" nl
-     "  MOV(IND(30), LABEL("label-bin-eq-code")); //code address" nl
-     "  #define PRIM_BIN_EQ 28" nl
-     "  /* end of bin= closure definition */" nl
-     nl
-     "  /* car closure definition */" nl
-     "  MOV(IND(31), T_CLOSURE); //type" nl
-     "  MOV(IND(32), 308618859); //env" nl
-     "  MOV(IND(33), LABEL("label-car-code")); //code address" nl
-     "  #define PRIM_CAR 31" nl
-     "  /* end of car closure definition */" nl
-     nl
-     "  /* cdr closure definition */" nl
-     "  MOV(IND(34), T_CLOSURE); //type" nl
-     "  MOV(IND(35), 308618859); //env" nl
-     "  MOV(IND(36), LABEL("label-cdr-code")); //code address" nl
-     "  #define PRIM_CDR 34" nl
-     "  /* end of cdr closure definition */" nl
-   )))
+
+(define create-prologue
+  (lambda (fvar-table)
+    (let ((label-cont (^label-cont)))
+      (string-append
+       "#include <stdio.h>" nl
+       "#include <stdlib.h>" nl
+       "#define DO_SHOW 2" nl
+       "#include \"arch/cisc.h\"" nl
+       "#include \"arch/info.h\"" nl
+       "" nl
+       "int main()" nl
+       "{" nl
+       "  int i,j;" nl ;Declared here because otherwise there could be multiple declerations in a file
+       "  START_MACHINE;" nl
+       "  JUMP(CONTINUE);" nl
+       "#include \"arch/char.lib\"" nl
+       "#include \"arch/io.lib\"" nl
+       "#include \"arch/math.lib\"" nl
+       "#include \"arch/string.lib\"" nl
+       "#include \"arch/system.lib\"" nl
+       "#include \"arch/scheme.lib\"" nl
+       nl
+       label-not-proc":" nl
+       "  JUMP("label-end-program");" nl
+       "CONTINUE:" nl
+       "  /* definitions of some basic scheme objects */" nl
+       "  /* this might be replaced later when symbols are properly implemented */" nl
+       nl
+       "  /* allocating 1000 memory cells */" nl
+       "  ADD(IND(0), 1000);" nl 
+       nl
+       "  /* Void object definition */" nl
+       "  MOV(IND(1), T_VOID);" nl
+       "  #define SOB_VOID 1" nl
+       nl
+       "  /* Null (empty list) definition */" nl
+       "  MOV(IND(2), T_NIL);" nl 
+       "  #define SOB_NIL 2" nl 
+       nl
+       "  /* #f definition */" nl
+       "  MOV(IND(3), T_BOOL);" nl
+       "  MOV(IND(4), 0);" nl
+       "  #define SOB_FALSE 3" nl 
+       nl
+       "  /* #t definition */" nl
+       "  MOV(IND(5), T_BOOL);" nl
+       "  MOV(IND(6), 1);" nl
+       "  #define SOB_TRUE 5" nl
+       nl
+       "  /* cons code */" nl
+       "  JUMP("label-cont"); //skipping over the actual (cons) execution, because we only want to define it" nl
+       label-cons-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);"  nl
+       "  PUSH(FPARG(3)); //The cdr" nl
+       "  PUSH(FPARG(2)); //The car" nl
+       "  CALL(MAKE_SOB_PAIR);" nl
+       "  DROP(2);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of cons code */" nl
+       nl
+       "  /* bin+ code */" nl
+       label-bin-plus-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1); //saving R1" nl
+       "  PUSH(R2); //saving R2" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  MOV(R1, INDD(R1,1));" nl
+       "  MOV(R2, FPARG(3));" nl
+       "  MOV(R2, INDD(R2,1));" nl
+       "  ADD(R1, IMM(R2));" nl
+       "  PUSH(IMM(R1));" nl
+       "  CALL(MAKE_SOB_INTEGER);" nl
+       "  DROP(IMM(1));" nl
+       "  POP(R2); //restoring R2" nl
+       "  POP(R1); //restoring R1" nl
+       "  POP(FP); //restoring FP" nl
+       "  RETURN;" nl
+       "  /* end of bin+ code */" nl
+       nl 
+       "  /* bin- code */" nl
+       label-bin-minus-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1); //saving R1" nl
+       "  PUSH(R2); //saving R2" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  MOV(R1, INDD(R1,1));" nl
+       "  MOV(R2, FPARG(3));" nl
+       "  MOV(R2, INDD(R2,1));" nl
+       "  SUB(R1, IMM(R2));" nl
+       "  PUSH(IMM(R1));" nl
+       "  CALL(MAKE_SOB_INTEGER);" nl
+       "  DROP(IMM(1));" nl
+       "  POP(R2); //restoring R2" nl
+       "  POP(R1); //restoring R1" nl
+       "  POP(FP); //restoring FP" nl
+       "  RETURN;" nl
+       "  /* end of bin- code */" nl
+       nl 
+       "  /* bin* code */" nl
+       label-bin-mult-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1); //saving R1" nl
+       "  PUSH(R2); //saving R2" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  MOV(R1, INDD(R1,1));" nl
+       "  MOV(R2, FPARG(3));" nl
+       "  MOV(R2, INDD(R2,1));" nl
+       "  MUL(R1, IMM(R2));" nl
+       "  PUSH(IMM(R1));" nl
+       "  CALL(MAKE_SOB_INTEGER);" nl
+       "  DROP(IMM(1));" nl
+       "  POP(R2); //restoring R2" nl
+       "  POP(R1); //restoring R1" nl
+       "  POP(FP); //restoring FP" nl
+       "  RETURN;" nl
+       "  /* end of bin* code */" nl
+       nl 
+       "  /* bin/ code */" nl
+       label-bin-div-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1); //saving R1" nl
+       "  PUSH(R2); //saving R2" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  MOV(R1, INDD(R1,1));" nl
+       "  MOV(R2, FPARG(3));" nl
+       "  MOV(R2, INDD(R2,1));" nl
+       "  DIV(R1, IMM(R2));" nl
+       "  PUSH(IMM(R1));" nl
+       "  CALL(MAKE_SOB_INTEGER);" nl
+       "  DROP(IMM(1));" nl
+       "  POP(R2); //restoring R2" nl
+       "  POP(R1); //restoring R1" nl
+       "  POP(FP); //restoring FP" nl
+       "  RETURN;" nl
+       "  /* end of bin/ code */" nl
+       nl 
+       "  /* bin< code */" nl
+       label-bin-less-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1); //saving R1" nl
+       "  PUSH(R2); //saving R2" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  MOV(R1, INDD(R1,1));" nl
+       "  MOV(R2, FPARG(3));" nl
+       "  MOV(R2, INDD(R2,1));" nl
+       "  MOV(R0, SOB_FALSE);" nl
+       "  CMP(IMM(R1),IMM(R2));" nl
+       "  JUMP_GE("label-bin-less-done");" nl
+       "  MOV(R0, SOB_TRUE);" nl
+       label-bin-less-done":" nl
+       "  POP(R2); //restoring R2" nl
+       "  POP(R1); //restoring R1" nl
+       "  POP(FP); //restoring FP" nl
+       "  RETURN;" nl
+       "  /* end of bin< code */" nl
+       nl 
+       "  /* bin= code */" nl
+       label-bin-eq-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1); //saving R1" nl
+       "  PUSH(R2); //saving R2" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  MOV(R1, INDD(R1,1));" nl
+       "  MOV(R2, FPARG(3));" nl
+       "  MOV(R2, INDD(R2,1));" nl
+       "  MOV(R0, SOB_FALSE);" nl
+       "  CMP(IMM(R1),IMM(R2));" nl
+       "  JUMP_NE("label-bin-eq-done");" nl
+       "  MOV(R0, SOB_TRUE);" nl
+       label-bin-eq-done":" nl
+       "  POP(R2); //restoring R2" nl
+       "  POP(R1); //restoring R1" nl
+       "  POP(FP); //restoring FP" nl
+       "  RETURN;" nl
+       "  /* end of bin= code */" nl
+       nl 
+       "  /* car code */" nl
+       label-car-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  MOV(R0, INDD(R1,1));" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of car code */" nl
+       nl
+       "  /* cdr code */" nl
+       label-cdr-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  MOV(R0, INDD(R1,2));" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of cdr code */" nl
+       nl
+       label-cont":" nl
+       (gen-closure-def 'cons label-cons-code fvar-table)
+       (gen-closure-def 'bin+ label-bin-plus-code fvar-table)
+       (gen-closure-def 'bin- label-bin-minus-code fvar-table)
+       (gen-closure-def 'bin* label-bin-mult-code fvar-table)
+       (gen-closure-def 'bin/ label-bin-div-code fvar-table)
+       (gen-closure-def 'bin< label-bin-less-code fvar-table)
+       (gen-closure-def 'bin= label-bin-eq-code fvar-table)
+       (gen-closure-def 'car label-car-code fvar-table)
+       (gen-closure-def 'cdr label-cdr-code fvar-table)
+       ))))
+
+(define place-prim-ptr
+  (lambda (prim-name prim-addr fvar-table)
+    (let ((fvar-addr-str (number->string (car (assoc-i prim-name fvar-table 2)))))
+      (string-append
+       "  MOV(IND("fvar-addr-str"),IMM("(number->string prim-addr)"));" nl
+       ))))
+
+(define gen-closure-def
+  (lambda (prim-name code-label fvar-table)
+    (let ((addr (get-next-addr))
+          (env-str "308618859"))
+      (string-append
+       "  /* "(symbol->string prim-name)" closure definition */" nl
+       "  MOV(IND("(number->string addr)"), T_CLOSURE); //type" nl
+       "  MOV(IND("(number->string (+ addr 1))"), "env-str"); //env" nl
+       "  MOV(IND("(number->string (+ addr 2))"), LABEL("code-label")); //code-address" nl
+       (place-prim-ptr prim-name addr fvar-table)
+       "  /* end of "(symbol->string prim-name)" closure definition */" nl
+       nl
+       ))))
+
+(define ^next+3
+  (lambda (first)
+    (let ((n first))
+      (lambda ()
+        (set! n (+ n 3))
+        n))))
+
+(define get-next-addr (^next+3 50))
 
 (define create-mem-prologue 
   (lambda (consts-dict fvar-dict)
@@ -1101,67 +1080,27 @@
                "  /* end of code-gen for (define a e) */" nl
                ))))))
 
-
+(define fvar-code
+  (lambda (prim-name-str label-name-str)
+    (string-append
+     "  /* (fvar "prim-name-str") */" nl
+     "  MOV(R0, "label-name-str");" nl
+     "  /* end of (fvar "prim-name-str") */" nl)))
+      
 (define code-gen-fvar
   (lambda (pe env-size param-size consts-table fvar-table)
     (with pe
           (lambda (fvar name)
-            (cond ((eq? name 'cons)
-                   (string-append
-                    "  /* (fvar cons) */" nl
-                    "  MOV(R0, PRIM_CONS);" nl
-                    "  /* end of (fvar cons) */;" nl))
-                  ((eq? name 'bin+)
-                   (string-append
-                    "  /* (fvar bin+) */" nl
-                    "  MOV(R0, PRIM_BIN_PLUS);" nl
-                    "  /* end of (fvar bin+) */" nl))
-                  ((eq? name 'bin-)
-                   (string-append
-                    "  /* (fvar bin-) */" nl
-                    "  MOV(R0, PRIM_BIN_MINUS);" nl
-                    "  /* end of (fvar bin-) */" nl))
-                  ((eq? name 'bin*)
-                   (string-append
-                    "  /* (fvar bin*) */" nl
-                    "  MOV(R0, PRIM_BIN_MULT);" nl
-                    "  /* end of (fvar bin*) */" nl))
-                  ((eq? name 'bin/)
-                   (string-append
-                    "  /* (fvar bin/) */" nl
-                    "  MOV(R0, PRIM_BIN_DIV);" nl
-                    "  /* end of (fvar bin/) */" nl))
-                  ((eq? name 'bin<)
-                   (string-append
-                    "  /* (fvar bin<) */" nl
-                    "  MOV(R0, PRIM_BIN_LESS);" nl
-                    "  /* end of (fvar bin<) */" nl))
-                  ((eq? name 'bin=)
-                   (string-append
-                    "  /* (fvar bin<) */" nl
-                    "  MOV(R0, PRIM_BIN_EQ);" nl
-                    "  /* end of (fvar bin<) */" nl))
-                  ((eq? name 'car)
-                   (string-append
-                    "  /* (fvar car) */" nl
-                    "  MOV(R0, PRIM_CAR);" nl
-                    "  /* end of (fvar car) */" nl))
-                  ((eq? name 'cdr)
-                   (string-append
-                    "  /* (fvar cdr) */" nl
-                    "  MOV(R0, PRIM_CDR);" nl
-                    "  /* end of (fvar cdr) */" nl))
-                  (else 
-                   (let ((fvar-addr (car (assoc-i name fvar-table 2))))
-                     (if fvar-addr
-                         (string-append
-                          "  /* (fvar "(symbol->string name)") */" nl
-                          "  MOV(R0,IND("(number->string fvar-addr)")); //returning the value of the fvar" nl
-                          "  /* end of (fvar "(symbol->string name)") */" nl
-                          )
-                         (string-append
-                          " /* AN ERROR OF SOME SORT!! TODO!!! */"
-                          )))))))))
+            (let ((fvar-addr (car (assoc-i name fvar-table 2))))
+              (if fvar-addr
+                  (string-append
+                   "  /* (fvar "(symbol->string name)") */" nl
+                   "  MOV(R0,IND("(number->string fvar-addr)")); //returning the value of the fvar" nl
+                   "  /* end of (fvar "(symbol->string name)") */" nl
+                   )
+                  (string-append
+                   " /* AN ERROR OF SOME SORT!! TODO!!! */"
+                   )))))))
                      
 (define ^pe-??
   (lambda (tag)
@@ -1382,6 +1321,7 @@
            (consts-length (get-consts-size const-dict))
            (fvar-dict (create-fvar-dict pe-lst (+ mem-init-addr consts-length)))
            (mem-init (create-mem-prologue const-dict fvar-dict))
+           (prologue (create-prologue fvar-dict))
            (output-code 
             (apply string-append (map
                                   (lambda (x)
