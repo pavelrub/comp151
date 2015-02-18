@@ -685,13 +685,15 @@
        "  CMP(IMM(R1),SOB_NIL);" nl
        "  JUMP_NE("label-null?-done");" nl
        "  MOV(R0, SOB_TRUE);" nl
-       label-null?-done":"
+       label-null?-done":" nl
        "  POP(R1);" nl
        "  POP(FP);" nl
        "  RETURN;" nl
        "  /* end of null? code */" nl
 
        label-cont":" nl
+       "  NOP;" nl
+;       "  MOV(R0,R0);" nl
        (gen-closure-def 'cons label-cons-code fvar-table)
        (gen-closure-def 'bin+ label-bin-plus-code fvar-table)
        (gen-closure-def 'bin- label-bin-minus-code fvar-table)
@@ -712,17 +714,20 @@
 
 (define gen-closure-def
   (lambda (prim-name code-label fvar-table)
-    (let ((addr (get-next-addr))
-          (env-str "308618859"))
-      (string-append
-       "  /* "(symbol->string prim-name)" closure definition */" nl
-       "  MOV(IND("(number->string addr)"), T_CLOSURE); //type" nl
-       "  MOV(IND("(number->string (+ addr 1))"), "env-str"); //env" nl
-       "  MOV(IND("(number->string (+ addr 2))"), LABEL("code-label")); //code-address" nl
-       (place-prim-ptr prim-name addr fvar-table)
-       "  /* end of "(symbol->string prim-name)" closure definition */" nl
-       nl
-       ))))
+    (cond ((null? fvar-table) (string-append))
+          ((eq? (assoc-i prim-name fvar-table 2) #f) "")
+          (else 
+           (let ((addr (get-next-addr))
+                 (env-str "308618859"))
+             (string-append
+              "  /* "(symbol->string prim-name)" closure definition */" nl
+              "  MOV(IND("(number->string addr)"), T_CLOSURE); //type" nl
+              "  MOV(IND("(number->string (+ addr 1))"), "env-str"); //env" nl
+              "  MOV(IND("(number->string (+ addr 2))"), LABEL("code-label")); //code-address" nl
+              (place-prim-ptr prim-name addr fvar-table)
+              "  /* end of "(symbol->string prim-name)" closure definition */" nl
+              nl
+              ))))))
 
 (define ^next+3
   (lambda (first)
@@ -1247,9 +1252,9 @@
 
 (define assoc-i
   (lambda (key l col)
-    (if (equal? (get-item (car l) col) key)
-        (car l)
-        (assoc-i key (cdr l) col))))
+    (cond ((null? l) #f)
+          ((equal? (get-item (car l) col) key) (car l))
+          (else (assoc-i key (cdr l) col)))))
 
 (define fvars->dict
   (lambda (fvar-lst acc-lst addr)
