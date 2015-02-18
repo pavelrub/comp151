@@ -770,10 +770,7 @@
        "  PUSH(R2);" nl
        "  MOV(R1, FPARG(2));" nl
        "  MOV(R2, FPARG(3));" nl
-       ;"  INFO;" nl
-       "  MOV(R1, INDD(IMM(R1),1));" nl
-       ;"  INFO;" nl
-       "  MOV(IND(R1), R2);" nl
+       "  MOV(INDD(IMM(R1),1), R2);" nl
        "  POP(R2);" nl
        "  POP(R1);" nl
        "  MOV(R0,SOB_VOID);" nl
