@@ -463,6 +463,8 @@
 (define label-bin-eq-done "L_Prim_bin_eq_done")
 (define label-car-code "L_Prim_car_code")
 (define label-cdr-code "L_Prim_cdr_code")
+(define label-null?-code "L_Prim_null_code")
+(define label-null?-done "L_Prim_null_done")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -653,8 +655,10 @@
        label-car-code":" nl
        "  PUSH(FP);" nl
        "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
        "  MOV(R1, FPARG(2));" nl
        "  MOV(R0, INDD(R1,1));" nl
+       "  POP(R1);" nl
        "  POP(FP);" nl
        "  RETURN;" nl
        "  /* end of car code */" nl
@@ -663,12 +667,30 @@
        label-cdr-code":" nl
        "  PUSH(FP);" nl
        "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
        "  MOV(R1, FPARG(2));" nl
        "  MOV(R0, INDD(R1,2));" nl
+       "  POP(R1);" nl
        "  POP(FP);" nl
        "  RETURN;" nl
        "  /* end of cdr code */" nl
        nl
+       "  /* null? code */" nl
+       label-null?-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  MOV(R0, SOB_FALSE);" nl
+       "  CMP(IMM(R1),SOB_NIL);" nl
+       "  JUMP_NE("label-null?-done");" nl
+       "  MOV(R0, SOB_TRUE);" nl
+       label-null?-done":"
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of null? code */" nl
+
        label-cont":" nl
        (gen-closure-def 'cons label-cons-code fvar-table)
        (gen-closure-def 'bin+ label-bin-plus-code fvar-table)
