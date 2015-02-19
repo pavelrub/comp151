@@ -486,6 +486,8 @@
 (define label-char?-done "L_Prim_char_done")
 (define label-string?-code "L_Prim_string_code")
 (define label-string?-done "L_Prim_string_done")
+(define label-symbol?-code "L_Prim_symbol_code")
+(define label-symbol?-done "L_Prim_symbol_done")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -959,6 +961,22 @@
        "  RETURN;" nl
        "  /* end of string? code */" nl
        nl
+       "  /* symbol? code */" nl
+       label-symbol?-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  MOV(R0, SOB_FALSE);" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  CMP(IND(R1), T_SYMBOL);" nl
+       "  JUMP_NE("label-symbol?-done");" nl
+       "  MOV(R0, SOB_TRUE);" nl
+       label-symbol?-done":" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of symbol? code */" nl
+       nl
 
        label-cont":" nl
        "  NOP;" nl
@@ -984,6 +1002,7 @@
        (gen-closure-def 'string-length label-string-length-code fvar-table)
        (gen-closure-def 'char? label-char?-code fvar-table)
        (gen-closure-def 'string? label-string?-code fvar-table)
+       (gen-closure-def 'symbol? label-symbol?-code fvar-table)
        ))))
 
 (define place-prim-ptr
