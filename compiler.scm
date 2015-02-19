@@ -480,6 +480,7 @@
 (define label-str-to-sym-loop "L_Prim_str_to_sym_loop")
 (define label-str-to-sym-done "L_Prim_str_to_sym_done")
 (define label-str-to-sym-new-sym "L_Prim_str_to_sym_new_sym")
+(define label-string-ref-code "L_Prim_string_ref_code")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -847,6 +848,7 @@
        "  PUSH(R1);" nl
        "  PUSH(R2);" nl
        "  PUSH(R3);" nl
+       "  PUSH(R4);" nl
        "  MOV(R4, MAGIC_SYMBOL); //R4 now points to the magic symbol" nl
        "  MOV(R1, INDD(R4,2)); //R1 now points to the first real symbol" nl
        "  MOV(R2, FPARG(2)); //R2 now holds the address of the parameter string" nl
@@ -869,12 +871,35 @@
        "  MOV(INDD(R0,1), IMM(R2)); //pointer to the string" nl
        "  MOV(INDD(R0,2), IMM(-1)); //pointer to the \"next\" symbol - but there is no next symbol, so it's -1" nl
        label-str-to-sym-done":" nl
+       "  POP(R4)" nl
        "  POP(R3);" nl
        "  POP(R2);" nl
        "  POP(R1);" nl
        "  POP(FP);" nl
        "  RETURN;" nl
        "  /* end of string->symbol code */" nl 
+       nl
+       "  /* string-ref code */" nl
+       label-string-ref-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  PUSH(R2);" nl
+       "  PUSH(R3);" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  MOV(R2, FPARG(3));" nl
+       "  MOV(R2, INDD(R2,1));" nl
+       "  ADD(R2,2); //because we need to skip the first cell (number of chars), and the given index starts at 0" nl
+       "  MOV(R3,INDD(R1,R2));" nl
+       "  PUSH(R3);" nl
+       "  CALL(MAKE_SOB_CHAR);" nl
+       "  DROP(1);" nl
+       "  POP(R3);" nl
+       "  POP(R2);" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end-of string-ref code */" nl
        nl
 
        label-cont":" nl
@@ -897,6 +922,7 @@
        (gen-closure-def 'set-cdr! label-set-cdr-code fvar-table)
        (gen-closure-def 'symbol->string label-symbol-to-string-code fvar-table)
        (gen-closure-def 'string->symbol label-str-to-sym-code fvar-table)
+       (gen-closure-def 'string-ref label-string-ref-code fvar-table)
        ))))
 
 (define place-prim-ptr
