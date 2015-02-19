@@ -497,6 +497,10 @@
 (define label-make-string-code "L_Prim_make_string_code")
 (define label-make-string-loop "L_Prim_make_string_loop")
 (define label-make-string-done "L_Prim_make_string_done")
+(define label-make-vector-create-val "L_Prim_make_vector_create_val")
+(define label-make-vector-code "L_Prim_make_vector_code")
+(define label-make-vector-loop "L_Prim_make_vector_loop")
+(define label-make-vector-done "L_Prim_make_vector_done")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -1103,6 +1107,47 @@
        "  RETURN;" nl
        "  /* end of make-string code */" nl
        nl
+       "  /* make-vector code */" nl
+       label-make-vector-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  PUSH(R2);" nl
+       "  PUSH(R3);" nl
+       "  PUSH(R5);" nl
+       "  MOV(R1,FPARG(1));" nl
+       "  SUB(R1,1); //disregarding the magic argument" nl
+       "  MOV(R2,FPARG(2));" nl
+       "  MOV(R5, INDD(R2,1)); //placing the actual number in R5" nl
+       "  MOV(R2,R5);" nl
+       "  CMP(R1, IMM(1)); //Check if we got 1 or 2 arguments" nl
+       "  JUMP_EQ("label-make-vector-create-val"); //if 1, go to the vector-creation stage" nl
+       "  MOV(R3, FPARG(3)); " nl
+       "  MOV(R0, INDD(R3,1)); " nl
+       "  JUMP("label-make-vector-loop");" nl
+       label-make-vector-create-val":" nl
+       "  PUSH(IMM(7));" nl
+       "  CALL(MAKE_SOB_INTEGER);" nl
+       "  DROP(1);" nl
+       label-make-vector-loop":" nl
+       "  CMP(R2,0);" nl
+       "  JUMP_EQ("label-make-vector-done");" nl
+       "  PUSH(IMM(R0)); " nl
+       "  DECR(R2);" nl
+       "  JUMP("label-make-vector-loop");" nl
+       label-make-vector-done":" nl
+       "  PUSH(IMM(R5)); //Push the number of values" nl
+       "  CALL(MAKE_SOB_VECTOR);" nl
+       "  ADD(R5,1);" nl
+       "  DROP(R5);" nl
+       "  POP(R5);" nl
+       "  POP(R3);" nl
+       "  POP(R2);" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of make-vector code */" nl
+       nl
 
 
        label-cont":" nl
@@ -1136,6 +1181,7 @@
        (gen-closure-def 'vector-ref label-vector-ref-code fvar-table)
        (gen-closure-def 'integer->char label-integer->char-code fvar-table)
        (gen-closure-def 'make-string label-make-string-code fvar-table)
+       (gen-closure-def 'make-vector label-make-vector-code fvar-table)
        ))))
 
 (define place-prim-ptr
