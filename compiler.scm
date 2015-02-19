@@ -493,6 +493,7 @@
 (define label-vector?-done "L_Prim_vector_done")
 (define label-vector-length-code "L_Prim_vector_length_code")
 (define label-vector-ref-code "L_Prim_vector_ref_code")
+(define label-integer->char-code "L_Prim_integer_to_char_code")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -1046,6 +1047,20 @@
        "  RETURN;" nl
        "  /* end-of vector-ref code */" nl
        nl
+       "  /* integer->char code */" nl
+       label-integer->char-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  MOV(R1,FPARG(2));" nl
+       "  PUSH(INDD(R1,1));" nl
+       "  CALL(MAKE_SOB_CHAR);" nl
+       "  DROP(1);" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of integer->char code */" nl
+       nl 
 
        label-cont":" nl
        "  NOP;" nl
@@ -1076,6 +1091,7 @@
        (gen-closure-def 'vector? label-vector?-code fvar-table)
        (gen-closure-def 'vector-length label-vector-length-code fvar-table)
        (gen-closure-def 'vector-ref label-vector-ref-code fvar-table)
+       (gen-closure-def 'integer->char label-integer->char-code fvar-table)
        ))))
 
 (define place-prim-ptr
