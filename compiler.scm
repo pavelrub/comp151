@@ -476,10 +476,14 @@
 (define label-set-car-code "L_Prim_set_car_code")
 (define label-set-cdr-code "L_Prim_set_cdr_code")
 (define label-symbol-to-string-code "L_Prim_symbol_to_string_code")
+(define label-str-to-sym-code "L_Prim_str_to_sym_code")
+(define label-str-to-sym-loop "L_Prim_str_to_sym_loop")
+(define label-str-to-sym-done "L_Prim_str_to_sym_done")
+(define label-str-to-sym-new-sym "L_Prim_str_to_sym_new_sym")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
-  (lambda (fvar-table)
+  (lambda (fvar-table first-sym-addr)
     (let ((label-cont (^label-cont)))
       (string-append
        "#include <stdio.h>" nl
@@ -506,8 +510,8 @@
        "  /* definitions of some basic scheme objects */" nl
        "  /* this might be replaced later when symbols are properly implemented */" nl
        nl
-       "  /* allocating 1000 memory cells */" nl
-       "  ADD(IND(0), 1000);" nl 
+       ;"  /* allocating 1000 memory cells */" nl
+       ;"  ADD(IND(0), 1000);" nl 
        nl
        "  /* Void object definition */" nl
        "  MOV(IND(1), T_VOID);" nl
@@ -526,6 +530,12 @@
        "  MOV(IND(5), T_BOOL);" nl
        "  MOV(IND(6), 1);" nl
        "  #define SOB_TRUE 5" nl
+       nl
+       "  /* Magic symbol devinition */" nl
+       "  MOV(IND(7), T_SYMBOL);" nl
+       "  MOV(IND(8), -1);" nl
+       "  MOV(IND(9),"(number->string first-sym-addr)");" nl
+       "  #define MAGIC_SYMBOL 7" nl
        nl
        "  /* cons code */" nl
        "  JUMP("label-cont"); //skipping over the actual (cons) execution, because we only want to define it" nl
@@ -830,6 +840,42 @@
        "  RETURN;" nl
        "  /* end of symbol->string code */" nl 
        nl
+       "  /* string->symbol code  */" nl
+       label-str-to-sym-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  PUSH(R2);" nl
+       "  PUSH(R3);" nl
+       "  MOV(R4, MAGIC_SYMBOL); //R4 now points to the magic symbol" nl
+       "  MOV(R1, INDD(R4,2)); //R1 now points to the first real symbol" nl
+       "  MOV(R2, FPARG(2)); //R2 now holds the address of the parameter string" nl
+       label-str-to-sym-loop":" nl
+       "  CMP(R1,IMM(-1)); //Check if we are not at the last symbol" nl
+       "  JUMP_EQ("label-str-to-sym-new-sym"); //If we are - there are no more symbols in the list, so create a new symbol." nl
+       "  MOV(R3,INDD(R1,1)); //If the symbol exists - point R3 to its string" nl
+       "  MOV(R0,R1); //And point R0 to the symbol itself (in preperation for returning)" nl
+       "  CMP(R3,R2); //compare the string addresses of the current symbol and the parameter" nl
+       "  JUMP_EQ("label-str-to-sym-done"); //If they are the same - we have found what we were looking for, so finish" nl
+       "  MOV(R4, R1); //Otherwise, save the current symbol address in R4" nl
+       "  MOV(R1, INDD(R1,2)); //and move R1 to the next symbol" nl
+       "  JUMP("label-str-to-sym-loop");" nl
+       label-str-to-sym-new-sym":" nl
+       "  PUSH(IMM(3)); //Prepare to allocate memory for a new symbol" nl
+       "  CALL(MALLOC); //Allocating memory, the address is in R0" nl
+       "  DROP(1);" nl
+       "  MOV(INDD(R4,2),IMM(R0)); //Update the pointer of the previous symbol to point to the new symbol" nl
+       "  MOV(IND(R0), T_SYMBOL) //type" nl
+       "  MOV(INDD(R0,1), IMM(R2)); //pointer to the string" nl
+       "  MOV(INDD(R0,2), IMM(-1)); //pointer to the \"next\" symbol - but there is no next symbol, so it's -1" nl
+       label-str-to-sym-done":" nl
+       "  POP(R3);" nl
+       "  POP(R2);" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of string->symbol code */" nl 
+       nl
 
        label-cont":" nl
        "  NOP;" nl
@@ -850,6 +896,7 @@
        (gen-closure-def 'set-car! label-set-car-code fvar-table)
        (gen-closure-def 'set-cdr! label-set-cdr-code fvar-table)
        (gen-closure-def 'symbol->string label-symbol-to-string-code fvar-table)
+       (gen-closure-def 'string->symbol label-str-to-sym-code fvar-table)
        ))))
 
 (define place-prim-ptr
@@ -1414,8 +1461,17 @@
                      (cons `(,addr ,curr) acc-lst)
                      (+ addr 1)))))))
 
+(define get-first-sym-addr
+  (lambda (const-dict)
+    (if (null? const-dict)
+        -1
+        (let ((type (get-item (get-item (car const-dict) 3) 1)))
+          (if (eq? type '\T_SYMBOL)
+              (caar const-dict)
+              (get-first-sym-addr (cdr const-dict)))))))
+
 (define consts->dict
-  (lambda (const-lst acc-lst addr)
+  (lambda (const-lst acc-lst addr last-sym-addr)
     (cond
      ((null? const-lst) (reverse acc-lst))
      (else 
@@ -1424,24 +1480,33 @@
          ((number? curr)
           (consts->dict (cdr const-lst)
                         (cons  `(,addr ,curr (\T_INTEGER ,curr)) acc-lst)
-                        (+ addr 2)))
+                        (+ addr 2)
+                        last-sym-addr))
          ((string? curr)
           (let ((ascii-chars (map char->integer (string->list curr))))
             (consts->dict (cdr const-lst)
                           (cons `(,addr ,curr (\T_STRING ,(string-length curr) ,@ascii-chars)) acc-lst)
-                          (+ addr (+ (string-length curr) 2)))))
+                          (+ addr (+ (string-length curr) 2))
+                          last-sym-addr)))
          ((pair? curr)
           (let ((addr-car (car (assoc-i (car curr) acc-lst 2)))
                 (addr-cdr (car (assoc-i (cdr curr) acc-lst 2))))
             (consts->dict (cdr const-lst)
                           (cons `(,addr ,curr (\T_PAIR ,addr-car ,addr-cdr)) acc-lst)
-                          (+ addr 3))))
+                          (+ addr 3)
+                          last-sym-addr)))
          ((symbol? curr)
           (let ((addr-str (car (assoc-i (symbol->string curr) acc-lst 2))))
             (consts->dict (cdr const-lst)
-                          (cons `(,addr ,curr (\T_SYMBOL ,addr-str)) acc-lst)
-                          (+ addr 2))))
-         (else (consts->dict (cdr const-lst) acc-lst addr)))
+                          (cons `(,addr ,curr (\T_SYMBOL ,addr-str ,last-sym-addr)) acc-lst)
+                          (+ addr 3)
+                          addr)))
+         ((char? curr)
+          (consts->dict (cdr const-lst)
+                        (cons `(,addr ,curr (\T_CHAR ,(char->integer curr)) acc-lst))
+                        (+ addr 2)
+                        (last-sym-addr)))
+         (else (consts->dict (cdr const-lst) acc-lst addr last-sym-addr)))
         )))))
 
 (define comma-sep
@@ -1475,7 +1540,7 @@
                            (,(+ addr 1) ,*void-object* (\T_VOID))
                            (,(+ addr 2) ,#f (\T_BOOL 0))
                            (,(+ addr 4) ,#t (\T_BOOL 1)))))
-      (consts->dict (process-consts (extract-consts pes)) (reverse basic-consts2) (+ addr 6)))))
+      (consts->dict (process-consts (extract-consts pes)) (reverse basic-consts2) (+ addr 6) -1))))
     
 (define create-consts-string
   (lambda (dict)
@@ -1491,12 +1556,13 @@
            (pe-lst (map (lambda (expr)
                           (parse-full expr))
                         sexprs))
-           (mem-init-addr 200)
+           (mem-init-addr 150)
            (const-dict (create-consts-dict pe-lst mem-init-addr))
            (consts-length (get-consts-size const-dict))
            (fvar-dict (create-fvar-dict pe-lst (+ mem-init-addr consts-length)))
            (mem-init (create-mem-prologue const-dict fvar-dict))
-           (prologue (create-prologue fvar-dict))
+           (first-sym-addr (get-first-sym-addr const-dict))
+           (prologue (create-prologue fvar-dict first-sym-addr))
            (output-code 
             (apply string-append (map
                                   (lambda (x)
@@ -1528,17 +1594,23 @@
 ;(parse-full '#f)
 
 ;(parse-full '(begin 'm))
-;(define t1 (process-consts (extract-consts (parse-full '(begin 'm)))))
-;t1
+(define t1 (process-consts (extract-consts (parse-full '(begin 'm)))))
+t1
 ;(consts->dict t1 '() 100)
 ;(create-consts-dict t1 100) 
 ;(create-consts-dict (process-consts (extract-consts (parse-full '(begin 'm)))) 100)
 ;(define d1 (create-consts-dict (map parse-full '((begin 'm))) 100))
 ;(create-consts-string d1)
-;(define d2 (create-consts-dict (map parse-full (file->sexprs "tests/symbols.scm")) 100))
-;(create-consts-string d2)
-;d2
 ;(parse-full '(#(1 2 3)))
 ;(define f1 (process-fvars (extract-fvars (parse-full '(define fact (lambda (n) (if (zero? n) 1 (* n (fact (- n 1))))))))))
 ;(fvars->dict f1 '() 200)
-(fvars->dict (process-fvars (extract-fvars (map parse-full (file->sexprs "tests/define.scm")))) '() 200)
+;(fvars->dict (process-fvars (extract-fvars (map parse-full (file->sexprs "tests/define.scm")))) '() 200)
+;(define c1 (process-consts (extract-consts (parse-full ''(a)))))
+;c1
+;(consts->dict c1 '() 100 -1)
+
+(define d2 (create-consts-dict (map parse-full (file->sexprs "tests/symbols.scm")) 100))
+d2
+(get-first-sym-addr d2)
+
+d2
