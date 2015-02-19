@@ -490,6 +490,8 @@
 (define label-symbol?-done "L_Prim_symbol_done")
 (define label-char->integer-code "L_Prim_char_to_integer_code")
 (define ^label-cont (^^label "L_cont_"))
+(define label-vector?-code "L_Prim_vector_code")
+(define label-vector?-done "L_Prim_vector_done")
 
 (define create-prologue
   (lambda (fvar-table first-sym-addr)
@@ -933,7 +935,7 @@
        "  PUSH(R1);" nl
        "  MOV(R1, FPARG(2));" nl
        "  PUSH(R1);" nl
-       "  CALL(IS_SOB_BOOL);" nl
+       "  CALL(IS_SOB_CHAR);" nl
        "  DROP(1);" nl
        "  MOV(R1, IMM(R0));" nl
        "  MOV(R0, SOB_FALSE);" nl
@@ -992,6 +994,22 @@
        "  RETURN;" nl
        "  /* end of char->integer code */" nl
        nl 
+       "  /* vector? code */" nl
+       label-vector?-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  MOV(R0, SOB_FALSE);" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  CMP(IND(R1), T_VECTOR);" nl
+       "  JUMP_NE("label-vector?-done");" nl
+       "  MOV(R0, SOB_TRUE);" nl
+       label-vector?-done":" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of vector? code */" nl
+       nl
        
 
        label-cont":" nl
@@ -1020,6 +1038,7 @@
        (gen-closure-def 'string? label-string?-code fvar-table)
        (gen-closure-def 'symbol? label-symbol?-code fvar-table)
        (gen-closure-def 'char->integer label-char->integer-code fvar-table)
+       (gen-closure-def 'vector? label-vector?-code fvar-table)
        ))))
 
 (define place-prim-ptr
