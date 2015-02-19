@@ -494,6 +494,9 @@
 (define label-vector-length-code "L_Prim_vector_length_code")
 (define label-vector-ref-code "L_Prim_vector_ref_code")
 (define label-integer->char-code "L_Prim_integer_to_char_code")
+(define label-make-string-code "L_Prim_make_string_code")
+(define label-make-string-loop "L_Prim_make_string_loop")
+(define label-make-string-done "L_Prim_make_string_done")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -1061,6 +1064,46 @@
        "  RETURN;" nl
        "  /* end of integer->char code */" nl
        nl 
+       "  /* make-string code */" nl
+       label-make-string-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  PUSH(R2);" nl
+       "  PUSH(R3);" nl
+       "  PUSH(R4);" nl
+       "  PUSH(R5);" nl
+       "  MOV(R1,FPARG(1));" nl
+       "  SUB(R1,1); //disregarding the magic argument" nl
+       "  MOV(R2,FPARG(2));" nl
+       "  MOV(R5, INDD(R2,1)); //placing the actual number in R2" nl
+       "  MOV(R2,R5);" nl
+       "  MOV(R4, IMM(112)); //Put in R4 the ascii of p, in preperation for the creation of the string" nl
+       "  CMP(R1, IMM(1)); //Check if we got 1 or 2 arguments" nl
+       "  JUMP_EQ("label-make-string-loop"); //if 1, go to the string-creation stage" nl
+       "  MOV(R3, FPARG(3)); //Else, put in R3 the given character" nl
+       "  MOV(R4, INDD(R3,1)); //Place in R4 the ascii code of the character in R3" nl
+       label-make-string-loop":" nl
+       "  CMP(R2,0);" nl
+       "  JUMP_EQ("label-make-string-done");" nl
+       "  PUSH(IMM(R4)); //Push the ascii code of the character to the stack, in preperation for MAKE_SOB_STRING" nl
+       "  DECR(R2);" nl
+       "  JUMP("label-make-string-loop");" nl
+       label-make-string-done":" nl
+       "  PUSH(IMM(R5)); //Push the number of characters" nl
+       "  CALL(MAKE_SOB_STRING);" nl
+       "  ADD(R5,1);" nl
+       "  DROP(R5);" nl
+       "  POP(R5);" nl
+       "  POP(R4);" nl
+       "  POP(R3);" nl
+       "  POP(R2);" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of make-string code */" nl
+       nl
+
 
        label-cont":" nl
        "  NOP;" nl
@@ -1092,6 +1135,7 @@
        (gen-closure-def 'vector-length label-vector-length-code fvar-table)
        (gen-closure-def 'vector-ref label-vector-ref-code fvar-table)
        (gen-closure-def 'integer->char label-integer->char-code fvar-table)
+       (gen-closure-def 'make-string label-make-string-code fvar-table)
        ))))
 
 (define place-prim-ptr
@@ -1762,7 +1806,7 @@
            (pe-lst (map (lambda (expr)
                           (parse-full expr))
                         sexprs))
-           (mem-init-addr 150)
+           (mem-init-addr 200)
            (const-dict (create-consts-dict pe-lst mem-init-addr))
            (consts-length (get-consts-size const-dict))
            (fvar-dict (create-fvar-dict pe-lst (+ mem-init-addr consts-length)))
