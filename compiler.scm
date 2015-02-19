@@ -481,6 +481,7 @@
 (define label-str-to-sym-done "L_Prim_str_to_sym_done")
 (define label-str-to-sym-new-sym "L_Prim_str_to_sym_new_sym")
 (define label-string-ref-code "L_Prim_string_ref_code")
+(define label-string-length-code "L_Prim_string_length_code")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -901,6 +902,23 @@
        "  RETURN;" nl
        "  /* end-of string-ref code */" nl
        nl
+       "  /* string-length code */" nl
+       label-string-length-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  PUSH(R2);" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  MOV(R2, INDD(R1,1));" nl
+       "  PUSH(R2);" nl
+       "  CALL(MAKE_SOB_INTEGER);" nl
+       "  DROP(IMM(1));" nl
+       "  POP(R2);" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of string-length code */" nl
+       nl
 
        label-cont":" nl
        "  NOP;" nl
@@ -923,6 +941,7 @@
        (gen-closure-def 'symbol->string label-symbol-to-string-code fvar-table)
        (gen-closure-def 'string->symbol label-str-to-sym-code fvar-table)
        (gen-closure-def 'string-ref label-string-ref-code fvar-table)
+       (gen-closure-def 'string-length label-string-length-code fvar-table)
        ))))
 
 (define place-prim-ptr
