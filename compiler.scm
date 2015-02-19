@@ -1046,7 +1046,6 @@
        "  RETURN;" nl
        "  /* end-of vector-ref code */" nl
        nl
-       
 
        label-cont":" nl
        "  NOP;" nl
