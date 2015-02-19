@@ -471,6 +471,8 @@
 (define label-integer?-done "L_Prim_integer_done")
 (define label-procedure?-code "L_Prim_procedure_code")
 (define label-procedure?-done "L_Prim_procedure_done")
+(define label-boolean?-code "L_Prim_boolean_code")
+(define label-boolean?-done "L_Prim_boolean_done")
 (define label-set-car-code "L_Prim_set_car_code")
 (define label-set-cdr-code "L_Prim_set_cdr_code")
 (define ^label-cont (^^label "L_cont_"))
@@ -763,6 +765,26 @@
        "  RETURN;" nl
        "  /* end of procedure? code */" nl
        nl
+       "  /* boolean? code */" nl
+       label-boolean?-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  PUSH(R1);" nl
+       "  CALL(IS_SOB_BOOL);" nl
+       "  DROP(1);" nl
+       "  MOV(R1, IMM(R0));" nl
+       "  MOV(R0, SOB_FALSE);" nl
+       "  CMP(R1, IMM(1));" nl
+       "  JUMP_NE("label-boolean?-done");" nl
+       "  MOV(R0, SOB_TRUE);" nl
+       label-boolean?-done":" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of boolean? code */" nl
+       nl
        "  /* set-car! code */" nl
        label-set-car-code":" nl
        "  PUSH(FP);" nl
@@ -810,6 +832,7 @@
        (gen-closure-def 'pair? label-pair?-code fvar-table)
        (gen-closure-def 'integer? label-integer?-code fvar-table)
        (gen-closure-def 'procedure? label-procedure?-code fvar-table)
+       (gen-closure-def 'boolean? label-boolean?-code fvar-table)
        (gen-closure-def 'set-car! label-set-car-code fvar-table)
        (gen-closure-def 'set-cdr! label-set-cdr-code fvar-table)
        ))))
@@ -1453,7 +1476,7 @@
            (pe-lst (map (lambda (expr)
                           (parse-full expr))
                         sexprs))
-           (mem-init-addr 100)
+           (mem-init-addr 200)
            (const-dict (create-consts-dict pe-lst mem-init-addr))
            (consts-length (get-consts-size const-dict))
            (fvar-dict (create-fvar-dict pe-lst (+ mem-init-addr consts-length)))
