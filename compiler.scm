@@ -475,6 +475,7 @@
 (define label-boolean?-done "L_Prim_boolean_done")
 (define label-set-car-code "L_Prim_set_car_code")
 (define label-set-cdr-code "L_Prim_set_cdr_code")
+(define label-symbol-to-string-code "L_Prim_symbol_to_string_code")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -816,6 +817,19 @@
        "  POP(FP);" nl
        "  RETURN;" nl
        "  /* end of set-cdr! code */" nl
+       nl
+       "  /* symbol->string code  */" nl
+       label-symbol-to-string-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  MOV(R0,INDD(R1,1));" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of symbol->string code */" nl 
+       nl
 
        label-cont":" nl
        "  NOP;" nl
@@ -835,6 +849,7 @@
        (gen-closure-def 'boolean? label-boolean?-code fvar-table)
        (gen-closure-def 'set-car! label-set-car-code fvar-table)
        (gen-closure-def 'set-cdr! label-set-cdr-code fvar-table)
+       (gen-closure-def 'symbol->string label-symbol-to-string-code fvar-table)
        ))))
 
 (define place-prim-ptr
