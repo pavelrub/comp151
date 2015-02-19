@@ -1631,6 +1631,15 @@
                         (cons `(,addr ,curr (\T_CHAR ,(char->integer curr))) acc-lst)
                         (+ addr 2)
                         last-sym-addr))
+         ((vector? curr)
+          (let ((members (map
+                          (lambda (mem)
+                            (car (assoc-i mem acc-lst 2)))
+                          (vector->list curr))))
+            (consts->dict (cdr const-lst)
+                          (cons `(,addr ,curr (\T_VECTOR ,(length members) ,@members)) acc-lst)
+                          (+ addr 2 (length members))
+                          last-sym-addr)))
          (else (consts->dict (cdr const-lst) acc-lst addr last-sym-addr)))
         )))))
 
@@ -1742,3 +1751,11 @@ d2
 (define d3 (consts->dict (process-consts (extract-consts (parse-full '#\a))) '() 100 -1))
 d2
 d3
+(define d4 (consts->dict (process-consts (extract-consts (parse-full ''#(a 2 #(1 2) 3)))) '() 100 -1))
+(define d5 (create-consts-dict (map parse-full (file->sexprs "test-vec/vector.scm")) 100))
+
+d4
+
+d3
+
+d5
