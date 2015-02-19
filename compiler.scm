@@ -482,6 +482,8 @@
 (define label-str-to-sym-new-sym "L_Prim_str_to_sym_new_sym")
 (define label-string-ref-code "L_Prim_string_ref_code")
 (define label-string-length-code "L_Prim_string_length_code")
+(define label-char?-code "L_Prim_char_code")
+(define label-char?-done "L_Prim_char_done")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -919,6 +921,26 @@
        "  RETURN;" nl
        "  /* end of string-length code */" nl
        nl
+       "  /* char? code */" nl
+       label-char?-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  PUSH(R1);" nl
+       "  CALL(IS_SOB_BOOL);" nl
+       "  DROP(1);" nl
+       "  MOV(R1, IMM(R0));" nl
+       "  MOV(R0, SOB_FALSE);" nl
+       "  CMP(R1, IMM(1));" nl
+       "  JUMP_NE("label-char?-done");" nl
+       "  MOV(R0, SOB_TRUE);" nl
+       label-char?-done":" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of char? code */" nl
+       nl
 
        label-cont":" nl
        "  NOP;" nl
@@ -942,6 +964,7 @@
        (gen-closure-def 'string->symbol label-str-to-sym-code fvar-table)
        (gen-closure-def 'string-ref label-string-ref-code fvar-table)
        (gen-closure-def 'string-length label-string-length-code fvar-table)
+       (gen-closure-def 'char? label-char?-code fvar-table)
        ))))
 
 (define place-prim-ptr
@@ -1445,7 +1468,7 @@
                            (vector->list e))) ,e))
        ((symbol? e)
         `(,@(topo-srt-const (symbol->string e)) ,e))
-       ;(else `(,e))
+       (else `(,e))
        )))
 
 (define dedup
@@ -1548,9 +1571,9 @@
                           addr)))
          ((char? curr)
           (consts->dict (cdr const-lst)
-                        (cons `(,addr ,curr (\T_CHAR ,(char->integer curr)) acc-lst))
+                        (cons `(,addr ,curr (\T_CHAR ,(char->integer curr))) acc-lst)
                         (+ addr 2)
-                        (last-sym-addr)))
+                        last-sym-addr))
          (else (consts->dict (cdr const-lst) acc-lst addr last-sym-addr)))
         )))))
 
@@ -1657,5 +1680,8 @@ t1
 (define d2 (create-consts-dict (map parse-full (file->sexprs "tests/symbols.scm")) 100))
 d2
 (get-first-sym-addr d2)
-
+(extract-consts (parse-full '#\a))
+(process-consts (extract-consts (parse-full '#\a)))
+(define d3 (consts->dict (process-consts (extract-consts (parse-full '#\a))) '() 100 -1))
 d2
+d3
