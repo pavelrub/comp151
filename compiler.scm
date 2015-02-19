@@ -489,10 +489,11 @@
 (define label-symbol?-code "L_Prim_symbol_code")
 (define label-symbol?-done "L_Prim_symbol_done")
 (define label-char->integer-code "L_Prim_char_to_integer_code")
-(define ^label-cont (^^label "L_cont_"))
 (define label-vector?-code "L_Prim_vector_code")
 (define label-vector?-done "L_Prim_vector_done")
 (define label-vector-length-code "L_Prim_vector_length_code")
+(define label-vector-ref-code "L_Prim_vector_ref_code")
+(define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
   (lambda (fvar-table first-sym-addr)
@@ -1028,7 +1029,23 @@
        "  RETURN;" nl
        "  /* end of vector-length code */" nl
        nl
-       
+       "  /* vector-ref code */" nl
+       label-vector-ref-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  PUSH(R2);" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  MOV(R2, FPARG(3));" nl
+       "  MOV(R2, INDD(R2,1));" nl
+       "  ADD(R2,2); //because we need to skip the first cell (number of values), and the given index starts at 0" nl
+       "  MOV(R0,INDD(R1,R2));" nl
+       "  POP(R2);" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end-of vector-ref code */" nl
+       nl
        
 
        label-cont":" nl
@@ -1059,6 +1076,7 @@
        (gen-closure-def 'char->integer label-char->integer-code fvar-table)
        (gen-closure-def 'vector? label-vector?-code fvar-table)
        (gen-closure-def 'vector-length label-vector-length-code fvar-table)
+       (gen-closure-def 'vector-ref label-vector-ref-code fvar-table)
        ))))
 
 (define place-prim-ptr
