@@ -484,6 +484,8 @@
 (define label-string-length-code "L_Prim_string_length_code")
 (define label-char?-code "L_Prim_char_code")
 (define label-char?-done "L_Prim_char_done")
+(define label-string?-code "L_Prim_string_code")
+(define label-string?-done "L_Prim_string_done")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -941,6 +943,22 @@
        "  RETURN;" nl
        "  /* end of char? code */" nl
        nl
+       "  /* string? code */" nl
+       label-string?-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  MOV(R0, SOB_FALSE);" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  CMP(IND(R1), T_STRING);" nl
+       "  JUMP_NE("label-string?-done");" nl
+       "  MOV(R0, SOB_TRUE);" nl
+       label-string?-done":" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of string? code */" nl
+       nl
 
        label-cont":" nl
        "  NOP;" nl
@@ -965,6 +983,7 @@
        (gen-closure-def 'string-ref label-string-ref-code fvar-table)
        (gen-closure-def 'string-length label-string-length-code fvar-table)
        (gen-closure-def 'char? label-char?-code fvar-table)
+       (gen-closure-def 'string? label-string?-code fvar-table)
        ))))
 
 (define place-prim-ptr
@@ -1468,6 +1487,8 @@
                            (vector->list e))) ,e))
        ((symbol? e)
         `(,@(topo-srt-const (symbol->string e)) ,e))
+       ((char? e)
+        `(,e))
        (else `(,e))
        )))
 
