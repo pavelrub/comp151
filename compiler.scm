@@ -472,6 +472,7 @@
 (define label-procedure?-code "L_Prim_procedure_code")
 (define label-procedure?-done "L_Prim_procedure_done")
 (define label-set-car-code "L_Prim_set_car_code")
+(define label-set-cdr-code "L_Prim_set_cdr_code")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -762,8 +763,8 @@
        "  RETURN;" nl
        "  /* end of procedure? code */" nl
        nl
-       label-set-car-code":" nl
        "  /* set-car! code */" nl
+       label-set-car-code":" nl
        "  PUSH(FP);" nl
        "  MOV(FP,SP);" nl
        "  PUSH(R1);" nl
@@ -777,6 +778,22 @@
        "  POP(FP);" nl
        "  RETURN;" nl
        "  /* end of set-car! code */" nl
+       nl
+       "  /* set-cdr! code */" nl
+       label-set-cdr-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  PUSH(R2);" nl
+       "  MOV(R1, FPARG(2));" nl
+       "  MOV(R2, FPARG(3));" nl
+       "  MOV(INDD(IMM(R1),2), R2);" nl
+       "  POP(R2);" nl
+       "  POP(R1);" nl
+       "  MOV(R0,SOB_VOID);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of set-cdr! code */" nl
 
        label-cont":" nl
        "  NOP;" nl
@@ -794,6 +811,7 @@
        (gen-closure-def 'integer? label-integer?-code fvar-table)
        (gen-closure-def 'procedure? label-procedure?-code fvar-table)
        (gen-closure-def 'set-car! label-set-car-code fvar-table)
+       (gen-closure-def 'set-cdr! label-set-cdr-code fvar-table)
        ))))
 
 (define place-prim-ptr
@@ -1372,14 +1390,14 @@
          ((string? curr)
           (let ((ascii-chars (map char->integer (string->list curr))))
             (consts->dict (cdr const-lst)
-                         (cons `(,addr ,curr (\T_STRING ,(string-length curr) ,@ascii-chars)) acc-lst)
-                         (+ addr (+ (string-length curr) 2)))))
+                          (cons `(,addr ,curr (\T_STRING ,(string-length curr) ,@ascii-chars)) acc-lst)
+                          (+ addr (+ (string-length curr) 2)))))
          ((pair? curr)
           (let ((addr-car (car (assoc-i (car curr) acc-lst 2)))
                 (addr-cdr (car (assoc-i (cdr curr) acc-lst 2))))
             (consts->dict (cdr const-lst)
-                         (cons `(,addr ,curr (\T_PAIR ,addr-car ,addr-cdr)) acc-lst)
-                         (+ addr 3))))
+                          (cons `(,addr ,curr (\T_PAIR ,addr-car ,addr-cdr)) acc-lst)
+                          (+ addr 3))))
          ((symbol? curr)
           (let ((addr-str (car (assoc-i (symbol->string curr) acc-lst 2))))
             (consts->dict (cdr const-lst)
