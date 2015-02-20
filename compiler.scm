@@ -509,6 +509,10 @@
 (define label-apply-loop2 "L_Prim_apply_loop2")
 (define label-apply-loop1-done "L_Prim_apply_loop1_done")
 (define label-apply-loop2-done "L_Prim_apply_loop2_done")
+(define label-eq?-code "L_Prim_eq_code")
+(define label-eq?-done "L_Prim_eq_done")
+(define label-eq?-compare-addr "L_Prim_eq_compare_addr")
+(define label-eq?-compare-first-cell "L_Prim_eq_compare_first_cell")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -1273,6 +1277,50 @@
        "  JUMPA(INDD(R7,2)); //jump to the code of the closure" nl
        "  /* end of apply code */" nl
        nl
+       "  /* eq? code */" nl
+       label-eq?-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  MOV(R1, FPARG(2)); //put the first parameter in R1" nl
+       "  MOV(R2, FPARG(3)); //put the second parameter in R2" nl
+       "  MOV(R3, IND(R1)); //put the type of the first parameter in R3" nl
+       "  MOV(R4, IND(R2)); //put the type of the seond parameter in R4" nl
+       "  MOV(R0,SOB_FALSE); //put false as the default return address" nl
+       "  CMP(R4, R3); //compare the types" nl
+       "  JUMP_NE("label-eq?-done"); //if the types are different - we are done (return false)" nl
+       "  CMP(R3, T_PAIR); //otherwise, check if the two parameters are both pairs" nl
+       "  JUMP_EQ("label-eq?-compare-addr"); //if they are - jump to address comparison" nl
+       "  CMP(R3, T_STRING); //otherwise, check if they are both strings" nl
+       "  JUMP_EQ("label-eq?-compare-addr"); //if they are - jump to address comparison" nl
+       "  CMP(R3, T_VECTOR); //otherwise, check if they are both vectors" nl
+       "  JUMP_EQ("label-eq?-compare-addr"); //if they are - jump to address comparison" nl
+       "  //otherwise, they are either symbol, integer, closure, boolean or char, so we will compare the fields in each case" nl
+       "  CMP(R3,T_CLOSURE); //check if they are both closures" nl
+       "  JUMP_NE("label-eq?-compare-first-cell"); //if they are not - in all other cases we just need to compare the first field" nl
+       "  //if they are closures, we will compare the three fields of the closures. If one of them doesn't match - we will finish and return false" nl
+       "  CMP(INDD(R1,1),INDD(R2,1));" nl
+       "  JUMP_NE("label-eq?-done"); " nl
+       "  CMP(INDD(R1,2),INDD(R2,2));" nl
+       "  JUMP_NE("label-eq?-done"); " nl
+       "  CMP(INDD(R1,3),INDD(R2,3));" nl
+       "  JUMP_NE("label-eq?-done"); " nl
+       "  MOV(R0, SOB_TRUE); //otherwise - we will return true" nl
+       "  JUMP("label-eq?-done"); //finish" nl
+       label-eq?-compare-first-cell":" nl
+       "  CMP(INDD(R1,1),INDD(R2,1)); //comparing the first fields" nl
+       "  JUMP_NE("label-eq?-done"); //if they are not the same - we will finish and return false" nl
+       "  MOV(R0, SOB_TRUE); //otherwise - we will return true" nl
+       "  JUMP("label-eq?-done"); //finish" nl
+       label-eq?-compare-addr":" nl
+       "  CMP(R1,R2); //compare the addresses" nl
+       "  JUMP_NE("label-eq?-done"); //if they are not the same - we will finish and return false" nl
+       "  MOV(R0, SOB_TRUE); //otherwise - we will return true" nl
+       label-eq?-done":" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of eq? code */" nl
+       nl
+         
 
 
        label-cont":" nl
@@ -1311,6 +1359,7 @@
        (gen-closure-def 'vector-set! label-vector-set!-code fvar-table)
        (gen-closure-def 'remainder label-remainder-code fvar-table)
        (gen-closure-def 'apply label-apply-code fvar-table)
+       (gen-closure-def 'eq? label-eq?-code fvar-table)
        ))))
 
 (define place-prim-ptr
