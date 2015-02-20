@@ -1536,7 +1536,7 @@
                      ((eq? type 'variadic) '())))
             (body (get-last e))
             (new-env-size-str (number->string (+ env-size 1)))
-            (param-size-str (number->string param-size))
+            (param-size-str (number->string (+ 1 param-size)))
             (label-code (^label-lambda-code))
             (label-exit (^label-lambda-exit))
             (label-loop1 (^label-loop))
