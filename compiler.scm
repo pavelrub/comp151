@@ -501,8 +501,9 @@
 (define label-make-vector-code "L_Prim_make_vector_code")
 (define label-make-vector-loop "L_Prim_make_vector_loop")
 (define label-make-vector-done "L_Prim_make_vector_done")
-(define label-string-set!-code "L_Prim_string_string_set_code")
-(define label-vector-set!-code "L_Prim_vector_vector_set_code")
+(define label-string-set!-code "L_Prim_string_set_code")
+(define label-vector-set!-code "L_Prim_vector_set_code")
+(define label-remainder-code "L_Prim_remainder_code")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -1195,6 +1196,28 @@
        "  RETURN;" nl
        "  /* end of vector-set! code */" nl
        nl
+       "  /* remainder */" nl
+       label-remainder-code":" nl
+       "  PUSH(FP)" nl
+       "  MOV(FP,SP)" nl
+       "  PUSH(R1);" nl
+       "  PUSH(R2);" nl
+       "  PUSH(R3);" nl
+       "  MOV(R3,FPARG(2));" nl
+       "  MOV(R1,INDD(R3,1));" nl
+       "  MOV(R3,FPARG(3));" nl
+       "  MOV(R2,INDD(R3,1));" nl
+       "  REM(R1,R2);" nl
+       "  PUSH(R1)" nl
+       "  CALL(MAKE_SOB_INTEGER);" nl
+       "  DROP(1);" nl
+       "  POP(R3);" nl
+       "  POP(R2);" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of remainder code */" nl
+       nl
 
 
        label-cont":" nl
@@ -1231,6 +1254,7 @@
        (gen-closure-def 'make-vector label-make-vector-code fvar-table)
        (gen-closure-def 'string-set! label-string-set!-code fvar-table)
        (gen-closure-def 'vector-set! label-vector-set!-code fvar-table)
+       (gen-closure-def 'remainder label-remainder-code fvar-table)
        ))))
 
 (define place-prim-ptr
