@@ -501,6 +501,7 @@
 (define label-make-vector-code "L_Prim_make_vector_code")
 (define label-make-vector-loop "L_Prim_make_vector_loop")
 (define label-make-vector-done "L_Prim_make_vector_done")
+(define label-string-set!-code "L_Prim_string_string_set_code")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -1148,6 +1149,30 @@
        "  RETURN;" nl
        "  /* end of make-vector code */" nl
        nl
+       "  /* string-set! code */" nl
+       label-string-set!-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  PUSH(R2);" nl
+       "  PUSH(R3);" nl
+       "  PUSH(R4);" nl
+       "  MOV(R1, FPARG(2)); //put in R1 the pointer to the string we want to set!" nl
+       "  MOV(R4, FPARG(3)); //put in R4 the pointer to the character index we want to set!" nl
+       "  MOV(R2, INDD(R4,IMM(1))); //put in R2 the actual character index" nl;
+       "  MOV(R4, FPARG(4)); //put in R4 the character we want to put in the string" nl
+       "  MOV(R3, INDD(R4,1)); //put in R3 the ascii number of the character we want to put" nl
+       "  ADD(R2, IMM(2)); //increment the index by 2 (skip first cell and take into account that the index starts from 0)" nl
+       "  MOV(INDD(R1,R2),IMM(R3)); //change the string" nl
+       "  MOV(R0,SOB_VOID); //we want to return void?" nl
+       "  POP(R4);" nl
+       "  POP(R3);" nl
+       "  POP(R2);" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of string-set! code */" nl
+       nl
 
 
        label-cont":" nl
@@ -1182,6 +1207,7 @@
        (gen-closure-def 'integer->char label-integer->char-code fvar-table)
        (gen-closure-def 'make-string label-make-string-code fvar-table)
        (gen-closure-def 'make-vector label-make-vector-code fvar-table)
+       (gen-closure-def 'string-set! label-string-set!-code fvar-table)
        ))))
 
 (define place-prim-ptr
