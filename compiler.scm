@@ -502,6 +502,7 @@
 (define label-make-vector-loop "L_Prim_make_vector_loop")
 (define label-make-vector-done "L_Prim_make_vector_done")
 (define label-string-set!-code "L_Prim_string_string_set_code")
+(define label-vector-set!-code "L_Prim_vector_vector_set_code")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
@@ -1173,6 +1174,27 @@
        "  RETURN;" nl
        "  /* end of string-set! code */" nl
        nl
+       "  /* vector-set! code */" nl
+       label-vector-set!-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  PUSH(R1);" nl
+       "  PUSH(R2);" nl
+       "  PUSH(R3);" nl
+       "  MOV(R1, FPARG(2)); //put in R1 the pointer to the vector we want to set!" nl
+       "  MOV(R3, FPARG(3)); //put in R3 the pointer to the index we want to set!" nl
+       "  MOV(R2, INDD(R3,IMM(1))); //put in R2 the actual index" nl;
+       "  MOV(R3, FPARG(4)); //put in R3 the object we want to put in the vector" nl
+       "  ADD(R2, IMM(2)); //increment the index by 2 (skip first cell and take into account that the index starts from 0)" nl
+       "  MOV(INDD(R1,R2),IMM(R3)); //change the vector" nl
+       "  MOV(R0,SOB_VOID); //we want to return void?" nl
+       "  POP(R3);" nl
+       "  POP(R2);" nl
+       "  POP(R1);" nl
+       "  POP(FP);" nl
+       "  RETURN;" nl
+       "  /* end of vector-set! code */" nl
+       nl
 
 
        label-cont":" nl
@@ -1208,6 +1230,7 @@
        (gen-closure-def 'make-string label-make-string-code fvar-table)
        (gen-closure-def 'make-vector label-make-vector-code fvar-table)
        (gen-closure-def 'string-set! label-string-set!-code fvar-table)
+       (gen-closure-def 'vector-set! label-vector-set!-code fvar-table)
        ))))
 
 (define place-prim-ptr
