@@ -504,11 +504,20 @@
 (define label-string-set!-code "L_Prim_string_set_code")
 (define label-vector-set!-code "L_Prim_vector_set_code")
 (define label-remainder-code "L_Prim_remainder_code")
+(define label-apply-code "L_Prim_apply_code")
+(define label-apply-loop1 "L_Prim_apply_loop1")
+(define label-apply-loop2 "L_Prim_apply_loop2")
+(define label-apply-loop1-done "L_Prim_apply_loop1_done")
+(define label-apply-loop2-done "L_Prim_apply_loop2_done")
 (define ^label-cont (^^label "L_cont_"))
 
 (define create-prologue
-  (lambda (fvar-table first-sym-addr)
-    (let ((label-cont (^label-cont)))
+  (lambda (const-table fvar-table first-sym-addr)
+    (let ((label-cont (^label-cont))
+          (void-addr (car (assoc-i *void-object* const-table 2)))
+          (nil-addr (car (assoc-i '() const-table 2)))
+          (f-addr (car (assoc-i #f const-table 2)))
+          (t-addr (car (assoc-i #t const-table 2))))
       (string-append
        "#include <stdio.h>" nl
        "#include <stdlib.h>" nl
@@ -538,22 +547,21 @@
        ;"  ADD(IND(0), 1000);" nl 
        nl
        "  /* Void object definition */" nl
-       "  MOV(IND(1), T_VOID);" nl
-       "  #define SOB_VOID 1" nl
+       "  #define SOB_VOID "(number->string void-addr) nl
        nl
        "  /* Null (empty list) definition */" nl
        "  MOV(IND(2), T_NIL);" nl 
-       "  #define SOB_NIL 2" nl 
+       "  #define SOB_NIL "(number->string nil-addr) nl 
        nl
        "  /* #f definition */" nl
        "  MOV(IND(3), T_BOOL);" nl
        "  MOV(IND(4), 0);" nl
-       "  #define SOB_FALSE 3" nl 
+       "  #define SOB_FALSE "(number->string f-addr) nl 
        nl
        "  /* #t definition */" nl
        "  MOV(IND(5), T_BOOL);" nl
        "  MOV(IND(6), 1);" nl
-       "  #define SOB_TRUE 5" nl
+       "  #define SOB_TRUE "(number->string t-addr) nl
        nl
        "  /* Magic symbol devinition */" nl
        "  MOV(IND(7), T_SYMBOL);" nl
@@ -1196,7 +1204,7 @@
        "  RETURN;" nl
        "  /* end of vector-set! code */" nl
        nl
-       "  /* remainder */" nl
+       "  /* remainder code */" nl
        label-remainder-code":" nl
        "  PUSH(FP)" nl
        "  MOV(FP,SP)" nl
@@ -1217,6 +1225,53 @@
        "  POP(FP);" nl
        "  RETURN;" nl
        "  /* end of remainder code */" nl
+       nl
+       "  /* apply code */" nl
+       label-apply-code":" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
+       "  MOV(R1, FPARG(3)); //put the pointer to the arguments list in R1" nl
+       "  MOV(R7, FPARG(2)); //put the pointer to the closure in R7" nl
+       "  MOV(R5,IND(0)); //This is the memoery address where we will start the list unraveling. We need to remember it to loop backwards." nl
+       "  MOV(R0, R5); //R0 will be the end address of the list arguments in memory, so at first we will make it less than R5" nl
+       "  SUB(R0, 1); //making it less than R5" nl
+       "  MOV(R6,IMM(0)); //this will be our counter of loop elements" nl
+       label-apply-loop1":" nl
+       "  CMP(R1, SOB_NIL);  //check if it's an empty list" nl
+       "  JUMP_EQ("label-apply-loop1-done") //if it is - it means we are done unraveling the list" nl
+       "  PUSH(1); //otherwise - we will unravel the list one car at a time" nl
+       "  CALL(MALLOC);  //allocating memory for car" nl
+       "  DROP(1);" nl
+       "  MOV(R2, INDD(R1,1)); //put the pointer to R1's car in R2" nl
+       "  MOV(IND(R0), R2); //then put it in memory" nl
+       "  MOV(R2, INDD(R1,2)); //now put the pointer to R1's cdr in R2" nl
+       "  MOV(R1,R2); //then move it to R1. This is now our current location within the list" nl
+       "  INCR(R6); //oh, and we will also count how many elements the list has" nl
+       "  JUMP("label-apply-loop1"); //and we go again..." nl
+       label-apply-loop1-done":" nl
+       "  // loop unraveling is over, and the last non nil value in the loop is in IND(R0)" nl
+       "  // we now want to put all the list members to the stack in reverse order, then call f" nl
+       "  // but we don't want to just put it on top of the stack - we want to put it in place of apply's stack arguments (and n, env, ret)" nl
+       "  MOV(R1, INDD(R7,1)); //put the env of f in R1" nl
+       "  MOV(R2, FPARG(IMM(-1))); //put the return address in R2" nl
+       "  MOV(R3, FPARG(IMM(-2))); //put the old FP address in R3" nl
+       "  DROP(IMM(6)); //drop the existing frame, leave only the magic argument" nl
+       "  // now it's time to populate the stack with the list members" nl
+       label-apply-loop2":" nl
+       "  CMP(R0,R5); //compare R0 - pointer to the current argument, with R5 - pointer to the first argument" nl
+       "  JUMP_LT("label-apply-loop2-done"); //if R0 is lower than R5, we are done" nl
+       "  PUSH(IND(R0)); //else, push the current argument to the stack" nl
+       "  DECR(R0); //decease R0 to point to the next argument" nl
+       "  JUMP("label-apply-loop2"); //and loop" nl
+       label-apply-loop2-done":" nl
+       "  //we are done populating the stack with the list members, now we just need to push what remains" nl
+       "  ADD(R6,IMM(1)); //the number of list elements is the value of R6, plus 1 for the magic argument" nl
+       "  PUSH(R6); //pushing the number of parameters" nl
+       "  PUSH(R1); //pushing the env" nl
+       "  PUSH(R2); //pushing the return address" nl
+       "  MOV(FP,R3); //FP now points to the old FP" nl
+       "  JUMPA(INDD(R7,2)); //jump to the code of the closure" nl
+       "  /* end of apply code */" nl
        nl
 
 
@@ -1255,6 +1310,7 @@
        (gen-closure-def 'string-set! label-string-set!-code fvar-table)
        (gen-closure-def 'vector-set! label-vector-set!-code fvar-table)
        (gen-closure-def 'remainder label-remainder-code fvar-table)
+       (gen-closure-def 'apply label-apply-code fvar-table)
        ))))
 
 (define place-prim-ptr
@@ -1931,7 +1987,7 @@
            (fvar-dict (create-fvar-dict pe-lst (+ mem-init-addr consts-length)))
            (mem-init (create-mem-prologue const-dict fvar-dict))
            (first-sym-addr (get-first-sym-addr const-dict))
-           (prologue (create-prologue fvar-dict first-sym-addr))
+           (prologue (create-prologue const-dict fvar-dict first-sym-addr))
            (output-code 
             (apply string-append (map
                                   (lambda (x)
