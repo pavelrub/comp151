@@ -1681,7 +1681,22 @@
              "  /* end of bvar */" nl
              )))))
            
-            
+(define create-string-sob
+  (lambda (str)
+    (let* ((ascii-chars-rev (map char->integer (reverse (string->list str))))
+           (comment1 (string-append "  /* generating error string */" nl))
+           (push-chars (apply string-append (map
+                                     (lambda (char)
+                                       (string-append "  PUSH(" (number->string char) ");" nl))
+                                     ascii-chars-rev)))
+           (push-length (string-append "  PUSH("(number->string (string-length str))");" nl))
+           (make-sob-string (string-append "  CALL(MAKE_SOB_STRING);" nl))
+           (drop (string-append "  DROP(" (number->string (+ (string-length str) 1)) ");" nl))
+           (comment2 (string-append "  /* done generating error string */" nl)))
+      (string-append comment1 push-chars push-length make-sob-string drop comment2))))
+
+
+           push-lst)))
 (define code-gen-applic
   (lambda (e env-size param-size const-table fvar-table label-e-end)
     (with e
@@ -1699,7 +1714,8 @@
                "  PUSH("args-num-string")" nl
                (code-gen proc env-size param-size const-table fvar-table label-e-end)
                "  CMP(IND(R0), T_CLOSURE);" nl 
-               "  JUMP_NE("label-not-proc");" nl
+               "  JUMP_EQ("label-is-proc");" nl
+               "  
                "  PUSH(INDD(R0,1));" nl
                "  CALLA(INDD(R0,2));" nl
                "  MOV(R1, STARG(0));" nl
