@@ -1294,6 +1294,10 @@
        "  JUMP_EQ("label-eq?-compare-addr"); //if they are - jump to address comparison" nl
        "  CMP(R3, T_VECTOR); //otherwise, check if they are both vectors" nl
        "  JUMP_EQ("label-eq?-compare-addr"); //if they are - jump to address comparison" nl
+       "  CMP(R3, T_NIL); //otherwise, check if they are both nils" nl
+       "  JUMP_EQ("label-eq?-compare-addr"); //if they are - jump to address comparison" nl
+       "  CMP(R3, T_VOID); //otherwise, check if they are both voids" nl
+       "  JUMP_EQ("label-eq?-compare-addr"); //if they are - jump to address comparison" nl
        "  //otherwise, they are either symbol, integer, closure, boolean or char, so we will compare the fields in each case" nl
        "  CMP(R3,T_CLOSURE); //check if they are both closures" nl
        "  JUMP_NE("label-eq?-compare-first-cell"); //if they are not - in all other cases we just need to compare the first field" nl
@@ -1330,8 +1334,8 @@
        (gen-closure-def 'bin- label-bin-minus-code fvar-table)
        (gen-closure-def 'bin* label-bin-mult-code fvar-table)
        (gen-closure-def 'bin/ label-bin-div-code fvar-table)
-       (gen-closure-def 'bin< label-bin-less-code fvar-table)
-       (gen-closure-def 'bin= label-bin-eq-code fvar-table)
+       (gen-closure-def 'bin<? label-bin-less-code fvar-table)
+       (gen-closure-def 'bin=? label-bin-eq-code fvar-table)
        (gen-closure-def 'car label-car-code fvar-table)
        (gen-closure-def 'cdr label-cdr-code fvar-table)
        (gen-closure-def 'null? label-null?-code fvar-table)
@@ -1417,24 +1421,30 @@
    "  STOP_MACHINE;" nl
    "  return 0;" nl
    "}" nl))
-
-(define epilogue-sexpr
-  (string-append
-   "  /* printing the content of R0 */" nl
-   "  PUSH(R0);" nl
-   "  CALL(WRITE_SOB);" nl ;TODO: This assumes the value of *R0 is a Scheme Object. What if it's not? 
-   "  CALL(NEWLINE);" nl
-   "  DROP(1);" nl
-   "  /* done printing the content of R0 */" nl
-   ))
+(define ^label-dont-print (^^label "Ldont_print"))
+(define gen-epilogue-sexpr
+  (lambda (label-end-sexpr) 
+    (let ((label-dont-print (^label-dont-print)))
+      (string-append
+       label-end-sexpr":"
+       "  /* printing the content of R0 */" nl
+       "  CMP(R0, SOB_VOID);"
+       "  JUMP_EQ("label-dont-print");" nl
+       "  PUSH(R0);" nl
+       "  CALL(WRITE_SOB);" nl ;TODO: This assumes the value of *R0 is a Scheme Object. What if it's not? 
+       "  CALL(NEWLINE);" nl
+       "  DROP(1);" nl
+       label-dont-print":" nl
+       "  /* done printing the content of R0 */" nl
+       ))))
    
 (define code-gen-seq
-  (lambda (e env-size param-size const-table fvar-table)
+  (lambda (e env-size param-size const-table fvar-table label-e-end)
     (with e
           (lambda (seq exprs)
             (apply string-append
                    (map (lambda (pe)
-                          (code-gen pe env-size param-size const-table fvar-table))
+                          (code-gen pe env-size param-size const-table fvar-table label-e-end))
                         exprs))))))
 
 (define get-const-addr
@@ -1474,7 +1484,7 @@
 (define ^label-orexit (^^label "Lor_exit"))
 
 (define code-gen-or
-  (lambda (pe env-size param-size const-table fvar-table)
+  (lambda (pe env-size param-size const-table fvar-table label-e-end)
     (with pe
           (lambda (or pes)
             (let* ((first-pes (get-all-but-last pes))
@@ -1485,11 +1495,11 @@
                    (apply string-append
                           (map (lambda (e)
                                  (string-append
-                                  (code-gen e env-size param-size const-table fvar-table)
+                                  (code-gen e env-size param-size const-table fvar-table label-e-end)
                                   "  CMP(R0,"SOB_FALSE");" nl
                                   "  JUMP_NE(" label-exit ");" nl))
                                first-pes)))
-                  (last-pe-code (code-gen last-pe env-size param-size const-table fvar-table)))
+                  (last-pe-code (code-gen last-pe env-size param-size const-table fvar-table label-e-end)))
               (string-append
                "  /* or */" nl
                first-pes-code
@@ -1501,12 +1511,12 @@
 (define ^label-if3else (^^label "Lif3else"))
 (define ^label-if3exit (^^label "Lif3exit"))
 (define code-gen-if3
-  (lambda (e env-size param-size const-table fvar-table)
+  (lambda (e env-size param-size const-table fvar-table label-e-end)
     (with e
           (lambda (if3 test do-if-true do-if-false)
-            (let ((code-test (code-gen test env-size param-size const-table fvar-table))
-                  (code-dit (code-gen do-if-true env-size param-size const-table fvar-table))
-                  (code-dif (code-gen do-if-false env-size param-size const-table fvar-table))
+            (let ((code-test (code-gen test env-size param-size const-table fvar-table label-e-end))
+                  (code-dit (code-gen do-if-true env-size param-size const-table fvar-table label-e-end))
+                  (code-dif (code-gen do-if-false env-size param-size const-table fvar-table label-e-end))
                   (SOB_FALSE (number->string (car (assoc-i #f const-table 2))))
                   (label-else (^label-if3else))
                   (label-exit (^label-if3exit)))
@@ -1530,13 +1540,13 @@
 
 (define ^code-gen-lambda
   (lambda (type)
-    (lambda (e env-size param-size const-table fvar-table)
+    (lambda (e env-size param-size const-table fvar-table label-e-end)
       (let ((params (cond
                      ((or (eq? type 'opt) (eq? type 'simple)) (cadr e))
                      ((eq? type 'variadic) '())))
             (body (get-last e))
             (new-env-size-str (number->string (+ env-size 1)))
-            (param-size-str (number->string (+ 1 param-size)))
+            (param-size-str (number->string (+ 0 param-size)))
             (label-code (^label-lambda-code))
             (label-exit (^label-lambda-exit))
             (label-loop1 (^label-loop))
@@ -1549,6 +1559,7 @@
          "  /* allocating memory for new environment */" nl
          "  PUSH("new-env-size-str");" nl
          "  CALL(MALLOC);" nl
+         "  DROP(1);" nl
          "  MOV(R1,R0);" nl
          "  /* end of memory allocation. The result is in R1 */" nl
          "  CMP(FP,2);" nl
@@ -1572,8 +1583,13 @@
          "  /* done copying old env to new env location. Note that R1[0] is reserved for the environment expansion (not part of the old env) */" nl
          label-copyparam":" nl
          "  /* allocating memory for a new row in the new environment array (will be pointer from R0[0]) */" nl
+         ;"  CMP("param-size-str",0); //check if the number of new bvars is zero" nl
+         ;"  JUMP_NE("label-lambda-new-bvars"); //if there are new bvars, continue as normal with the env expansion" nl
+         ;"  PUSH(1); //else, allocate just one cell" nl
+         ;label-lambda-new-bvars":" nl
          "  PUSH("param-size-str");" nl
          "  CALL(MALLOC);" nl
+         "  DROP(1);" nl
          "  MOV(R3, R0);" nl
          "  /* done allocating memory. The address is in R3 */" nl
          "  /* Copying old params to the new environment (they turn from pvars to bvars)*/" nl
@@ -1601,18 +1617,22 @@
          "  /* Create the closure object */" nl
          "  PUSH(3);" nl
          "  CALL(MALLOC);" nl
+         "  DROP(1);" nl
          "  MOV(INDD(R0,0), T_CLOSURE); //Type of the object" nl
          "  MOV(INDD(R0,1), R1); //Pointer to the environment" nl
          "  MOV(INDD(R0,2), LABEL("label-code")); //Pointer to the body code of the procedure" nl
          "  /* Done creating the closure object */" nl
-         "  DROP(3); /* Remove all the PUSH operations done for the closure creation. THIS LINE FIXED A MAJOR BUG */" nl  ;;THIS WAS A MAJOR BUG FIX THAT TOOK ME SEVERAL HOURS TO FIND
          "  JUMP("label-exit");" nl
          nl
          label-code":" nl
          "  PUSH(FP);" nl
          "  MOV(FP,SP);" nl
          (cond
-          ((eq? type 'simple) "  /* stack-correction-code-for-lambda-simple")
+          ((eq? type 'simple) 
+           (string-append
+            "  /* code-gen of the lambda body */" nl
+            (code-gen body (+ env-size 1) (length params) const-table fvar-table label-e-end)
+            "  /* end of code-gen for lambda body */" nl))
           ((or (eq? type 'opt) (eq? type 'variadic))
            (let ((params-length-str (number->string (length params))))
              (string-append
@@ -1629,18 +1649,17 @@
               "  /* Finished creating the list of optional arguments */" nl
               "  MOV(STACK(SP-5-"params-length-str"),R1); //Puting the optional arguments list after all the non-optional params" nl
               "  /* end of stack-correction code for lambda-opt/variadic" nl
-              )))
+              "  /* code-gen of the lambda body */" nl
+              (code-gen body (+ env-size 1) (+ 1 (length params)) const-table fvar-table label-e-end)
+              "  /* end of code-gen for lambda body */" nl)))
           (else "  /* error */"))
          nl
-         "  /* code-gen of the lambda body */" nl
-         (code-gen body (+ env-size 1) (length params) const-table fvar-table);
-         "  /* end of code-gen for lambda body */" nl
          "  POP(FP);" nl
          "  RETURN;" nl
          label-exit":" nl)))))
 
 (define code-gen-pvar
-  (lambda (e env-size param-size const-table fvar-table)
+  (lambda (e env-size param-size const-table fvar-table label-e-end)
     (with e
           (lambda (pvar var minor)
             (let ((minor-in-stack-str (number->string (+ minor 2))))
@@ -1651,7 +1670,7 @@
                ))))))
 
 (define code-gen-bvar
-  (lambda (e env-size param-size const-table fvar-table)
+  (lambda (e env-size param-size const-table fvar-table label-e-end)
     (with e
           (lambda (bvar var major minor)
             (string-append
@@ -1664,7 +1683,7 @@
            
             
 (define code-gen-applic
-  (lambda (e env-size param-size const-table fvar-table)
+  (lambda (e env-size param-size const-table fvar-table label-e-end)
     (with e
           (lambda (applic proc args)
             (let ((args-num-string (number->string (+ (length args) 1)))) ;1 is added because of the extra Magic argument
@@ -1674,11 +1693,11 @@
                (apply string-append (map
                                      (lambda (arg)
                                        (string-append
-                                        (code-gen arg env-size param-size const-table fvar-table)
+                                        (code-gen arg env-size param-size const-table fvar-table label-e-end)
                                         "  PUSH(R0);" nl))
                                      (reverse args)))
                "  PUSH("args-num-string")" nl
-               (code-gen proc env-size param-size const-table fvar-table)
+               (code-gen proc env-size param-size const-table fvar-table label-e-end)
                "  CMP(IND(R0), T_CLOSURE);" nl 
                "  JUMP_NE("label-not-proc");" nl
                "  PUSH(INDD(R0,1));" nl
@@ -1690,7 +1709,7 @@
                ))))))
 
 (define code-gen-tc-applic
-  (lambda (e env-size param-size const-table fvar-table)
+  (lambda (e env-size param-size const-table fvar-table label-e-end)
     (with e
           (lambda (tc-applic proc args)
             (let ((args-num-string (number->string (+ (length args) 1))) ;Adding 1 because of the extra Magic argument
@@ -1704,13 +1723,13 @@
                (apply string-append (map
                                      (lambda (arg)
                                        (string-append
-                                        (code-gen arg env-size param-size const-table fvar-table)
+                                        (code-gen arg env-size param-size const-table fvar-table label-e-end)
                                         "  PUSH(R0);" nl
                                         ))
                                      (reverse args)))
                "  /* Done pushing arguments */" nl
                "  PUSH("args-num-string"); //Pushing the number of arguments" nl
-               (code-gen proc env-size param-size const-table fvar-table)
+               (code-gen proc env-size param-size const-table fvar-table label-e-end)
                "  CMP(INDD(R0,0),T_CLOSURE); //Make sure we got a closure" nl
                "  JUMP_NE("label-not-proc");" nl
                "  PUSH(INDD(R0,1)); //Push the environment onto the stack" nl
@@ -1750,7 +1769,7 @@
                
                
 (define code-gen-define
-  (lambda (pe env-size param-size const-table fvar-table)
+  (lambda (pe env-size param-size const-table fvar-table label-e-end)
     (with pe
           (lambda (def var value)
             (let ((fvar-addr (car (assoc-i (cadr var) fvar-table 2)))
@@ -1758,7 +1777,7 @@
               (string-append
                "  /* code-gen for (define a e) */" nl
                "  /* evaluating the value of e */" nl
-               (code-gen value env-size param-size const-table fvar-table)
+               (code-gen value env-size param-size const-table fvar-table label-e-end)
                "  /* finished evaluating the value of e */" nl
                "  MOV(IND("(number->string fvar-addr)"),R0); //setting the fvar value in the memory" nl
                "  MOV(R0,"(number->string SOB_VOID)"); //define should return #<void>" nl 
@@ -1773,7 +1792,7 @@
      "  /* end of (fvar "prim-name-str") */" nl)))
       
 (define code-gen-fvar
-  (lambda (pe env-size param-size consts-table fvar-table)
+  (lambda (pe env-size param-size const-table fvar-table label-e-end)
     (with pe
           (lambda (fvar name)
             (let ((fvar-addr (car (assoc-i name fvar-table 2))))
@@ -1810,8 +1829,8 @@
 (define code-gen-lambda-opt (^code-gen-lambda 'opt))
 (define code-gen-lambda-variadic (^code-gen-lambda 'variadic))
 (define code-gen
-  (lambda (pe env-size param-size const-table fvar-table)
-    (let ((params `(,pe ,env-size ,param-size ,const-table ,fvar-table)))
+  (lambda (pe env-size param-size const-table fvar-table label-e-end)
+    (let ((params `(,pe ,env-size ,param-size ,const-table ,fvar-table ,label-end-e)))
       (cond
        ((pe-pvar? pe) (apply code-gen-pvar params))
        ((pe-bvar? pe) (apply code-gen-bvar params))
@@ -1826,7 +1845,7 @@
        ((pe-lambda-variadic? pe) (apply code-gen-lambda-variadic params))
        ((pe-define? pe) (apply code-gen-define params))
        ((pe-fvar? pe) (apply code-gen-fvar params))
-       (else (void)))))) ;TODO: This needs to be replaced with an error message
+       (else ("compilation error: unknown expression"))))))  ;;TODO go to error here
 
 (define write-to-file
   (lambda (filename string)
@@ -1835,16 +1854,6 @@
         (display string p)
         (close-port p)))))
 
-(define compile-test
-  (lambda (source)
-    (let* ((sexprs (file->sexprs source))
-           (output-code 
-            (apply string-append (map
-                                  (lambda (x)
-                                    (code-gen x 0 0))
-                                  (map parse sexprs))))
-           (complete-code (string-append prologue output-code epilogue)))
-      output-code)))
 
 (define parse-full
   (lambda (sexpr)
@@ -1870,7 +1879,16 @@
 
 (define dedup
   (lambda (l)
-    (reverse (dedup-helper (reverse l)))))
+    (letrec ((run
+              (lambda (l)
+                (cond
+                 ((null? l) '())
+                 ((member (car l) (cdr l))
+                  (run (cdr l)))
+                 (else (cons (car l) (run (cdr l))))))))
+      (reverse (run (reverse l))))))
+              
+    ;(reverse (dedup-helper (reverse l)))))
 
 (define dedup-helper
   (lambda (l)
@@ -2024,12 +2042,18 @@
   (lambda (pes addr)
     (fvars->dict (process-fvars (extract-fvars pes)) '() addr)))
 
+(define ^label-sexpr-end (^^label "L_pe_epilogue"))
 (define compile-scheme-file
   (lambda (source target)
     (let* ((sexprs (file->sexprs source))
-           (pe-lst (map (lambda (expr)
+           (support-sexprs (file->sexprs "support-code.scm"))
+           (pe-file (map (lambda (expr)
                           (parse-full expr))
                         sexprs))
+           (pe-support (map (lambda (expr)
+                          (parse-full expr))
+                        support-sexprs))
+           (pe-lst (append pe-support pe-file))
            (mem-init-addr 200)
            (const-dict (create-consts-dict pe-lst mem-init-addr))
            (consts-length (get-consts-size const-dict))
@@ -2040,9 +2064,10 @@
            (output-code 
             (apply string-append (map
                                   (lambda (x)
-                                    (string-append
-                                     (code-gen x 0 0 const-dict fvar-dict)
-                                     epilogue-sexpr))
+                                    (let ((label-sexpr-end (^label-sexpr-end)))
+                                      (string-append
+                                       (code-gen x 0 0 const-dict fvar-dict label-sexpr-end)
+                                       (gen-epilogue-sexpr label-sexpr-end))))
                                   pe-lst)))
            (complete-code (string-append prologue mem-init output-code epilogue)))
       (write-to-file target complete-code))))
@@ -2092,8 +2117,7 @@ d2
 d2
 d3
 (define d4 (consts->dict (process-consts (extract-consts (parse-full ''#(a 2 #(1 2) 3)))) '() 100 -1))
-(define d5 (create-consts-dict (map parse-full (file->sexprs "test-vec/vector.scm")) 100))
-
+(define d5 (create-consts-dict (map parse-full (file->sexprs "test-plus/plus.scm")) 100))
 d4
 
 d3
