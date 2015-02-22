@@ -426,6 +426,7 @@
   (lambda (expr)
     (atp expr #f)))
 
+;;; it is what it is
 (define file->sexprs
   (lambda (filename)
     (let ((input (open-input-file filename)))
@@ -438,6 +439,7 @@
                         (cons e (run)))))))
         (run)))))
 
+;;; label maker
 (define ^^label
   (lambda (name)
     (let ((n 0))
@@ -541,14 +543,9 @@
        "#include \"arch/system.lib\"" nl
        "#include \"arch/scheme.lib\"" nl
        nl
-       label-not-proc":" nl
-       "  JUMP("label-end-program");" nl
        "CONTINUE:" nl
        "  /* definitions of some basic scheme objects */" nl
-       "  /* this might be replaced later when symbols are properly implemented */" nl
-       nl
-       ;"  /* allocating 1000 memory cells */" nl
-       ;"  ADD(IND(0), 1000);" nl 
+       "  /* this might be replaced later when constants are properly implemented */" nl
        nl
        "  /* Void object definition */" nl
        "  #define SOB_VOID "(number->string void-addr) nl
@@ -558,23 +555,19 @@
        "  #define SOB_NIL "(number->string nil-addr) nl 
        nl
        "  /* #f definition */" nl
-       "  MOV(IND(3), T_BOOL);" nl
-       "  MOV(IND(4), 0);" nl
        "  #define SOB_FALSE "(number->string f-addr) nl 
        nl
        "  /* #t definition */" nl
-       "  MOV(IND(5), T_BOOL);" nl
-       "  MOV(IND(6), 1);" nl
        "  #define SOB_TRUE "(number->string t-addr) nl
        nl
-       "  /* Magic symbol devinition */" nl
+       "  /* Magic symbol definition */" nl
        "  MOV(IND(7), T_SYMBOL);" nl
        "  MOV(IND(8), -1);" nl
        "  MOV(IND(9),"(number->string first-sym-addr)");" nl
        "  #define MAGIC_SYMBOL 7" nl
        nl
+       "  JUMP("label-cont"); //skipping over the actual execution, because we only want to write the primitives' code" nl
        "  /* cons code */" nl
-       "  JUMP("label-cont"); //skipping over the actual (cons) execution, because we only want to define it" nl
        label-cons-code":" nl
        "  PUSH(FP);" nl
        "  MOV(FP,SP);"  nl
@@ -593,13 +586,21 @@
        "  PUSH(R1); //saving R1" nl
        "  PUSH(R2); //saving R2" nl
        "  MOV(R1, FPARG(2));" nl
-       "  MOV(R1, INDD(R1,1));" nl
        "  MOV(R2, FPARG(3));" nl
+       "  CMP(IND(R1),T_INTEGER);" nl
+       "  JUMP_NE(L_binp_err);" nl
+       "  CMP(IND(R2),T_INTEGER);" nl
+       "  JUMP_NE(L_binp_err);" nl
+       "  MOV(R1, INDD(R1,1));" nl
        "  MOV(R2, INDD(R2,1));" nl
        "  ADD(R1, IMM(R2));" nl
        "  PUSH(IMM(R1));" nl
        "  CALL(MAKE_SOB_INTEGER);" nl
        "  DROP(IMM(1));" nl
+       "  JUMP(L_binp_cont);" nl
+       "L_binp_err:" nl
+       (create-sob-error "Error: attempt to apply bin+ to a non-integer")
+       "L_binp_cont:" nl
        "  POP(R2); //restoring R2" nl
        "  POP(R1); //restoring R1" nl
        "  POP(FP); //restoring FP" nl
@@ -906,7 +907,7 @@
        "  MOV(INDD(R0,1), IMM(R2)); //pointer to the string" nl
        "  MOV(INDD(R0,2), IMM(-1)); //pointer to the \"next\" symbol - but there is no next symbol, so it's -1" nl
        label-str-to-sym-done":" nl
-       "  POP(R4)" nl
+       "  POP(R4);" nl
        "  POP(R3);" nl
        "  POP(R2);" nl
        "  POP(R1);" nl
@@ -1210,8 +1211,8 @@
        nl
        "  /* remainder code */" nl
        label-remainder-code":" nl
-       "  PUSH(FP)" nl
-       "  MOV(FP,SP)" nl
+       "  PUSH(FP);" nl
+       "  MOV(FP,SP);" nl
        "  PUSH(R1);" nl
        "  PUSH(R2);" nl
        "  PUSH(R3);" nl
@@ -1220,7 +1221,7 @@
        "  MOV(R3,FPARG(3));" nl
        "  MOV(R2,INDD(R3,1));" nl
        "  REM(R1,R2);" nl
-       "  PUSH(R1)" nl
+       "  PUSH(R1);" nl
        "  CALL(MAKE_SOB_INTEGER);" nl
        "  DROP(1);" nl
        "  POP(R3);" nl
@@ -1324,8 +1325,6 @@
        "  RETURN;" nl
        "  /* end of eq? code */" nl
        nl
-         
-
 
        label-cont":" nl
        "  NOP;" nl
@@ -1366,6 +1365,7 @@
        (gen-closure-def 'eq? label-eq?-code fvar-table)
        ))))
 
+;;;Generates code for populating an fvar memory location with a pointer to a closure
 (define place-prim-ptr
   (lambda (prim-name prim-addr fvar-table)
     (let ((fvar-addr-str (number->string (car (assoc-i prim-name fvar-table 2)))))
@@ -1373,9 +1373,10 @@
        "  MOV(IND("fvar-addr-str"),IMM("(number->string prim-addr)"));" nl
        ))))
 
+;;; Generates code for defining a closure in memory 
 (define gen-closure-def
   (lambda (prim-name code-label fvar-table)
-    (cond ((null? fvar-table) (string-append))
+    (cond ((null? fvar-table) "")
           ((eq? (assoc-i prim-name fvar-table 2) #f) "")
           (else 
            (let ((addr (get-next-addr))
@@ -1399,6 +1400,7 @@
 
 (define get-next-addr (^next+3 50))
 
+;;; memory intitialization code block. This is for putting the constants in memory, and reserving enough space for fvars.
 (define create-mem-prologue 
   (lambda (consts-dict fvar-dict)
     (let* ((consts-str (create-consts-string consts-dict))
@@ -1414,6 +1416,7 @@
        "  /* end of memory initialization */" nl
        ))))
 
+;;; The epilogue of the entire code
 (define epilogue
   (string-append
    "  /* Stopping the machine */" nl
@@ -1421,6 +1424,7 @@
    "  STOP_MACHINE;" nl
    "  return 0;" nl
    "}" nl))
+
 (define ^label-dont-print (^^label "Ldont_print"))
 (define gen-epilogue-sexpr
   (lambda (label-end-sexpr) 
@@ -1428,10 +1432,10 @@
       (string-append
        label-end-sexpr":"
        "  /* printing the content of R0 */" nl
-       "  CMP(R0, SOB_VOID);"
+       "  CMP(R0, SOB_VOID);" nl
        "  JUMP_EQ("label-dont-print");" nl
        "  PUSH(R0);" nl
-       "  CALL(WRITE_SOB);" nl ;TODO: This assumes the value of *R0 is a Scheme Object. What if it's not? 
+       "  CALL(WRITE_SOB);" nl 
        "  CALL(NEWLINE);" nl
        "  DROP(1);" nl
        label-dont-print":" nl
@@ -1447,39 +1451,21 @@
                           (code-gen pe env-size param-size const-table fvar-table label-e-end))
                         exprs))))))
 
+;;; get the address of a given constant, from a given constant table
 (define get-const-addr
   (lambda (c dict)
     (cadr (assoc c dict))))
 
 (define code-gen-const
-  (lambda (e env-size param-size const-dict fvar-table)
+  (lambda (e env-size param-size const-table fvar-table label-e-end)
     (with e
           (lambda (const c)
-            (let ((addr (number->string (car (assoc-i c const-dict 2)))))
+            (let ((addr (number->string (car (assoc-i c const-table 2)))))
               (string-append
                "  /* constant */" nl
                "  MOV(R0,"addr"); //The calculated address from the symbol table" nl
                "  /* end of constant */" nl
                ))))))
-              ;(cond
-              ; (assoc c const-dict)
-              ; ((eq? c #f) (string-append
-              ;              "  /* #f */" nl
-              ;              "  MOV(R0, SOB_FALSE);" nl
-              ;              "  /* end of #f */" nl))
-              ; ((eq? c #t) (string-append
-              ;              "  /* #t */" nl
-              ;              "  MOV(R0, SOB_TRUE);" nl
-              ;              "  /* end of #t */" nl))
-              ; ((eq? c *void-object*) (string-append
-              ;                         "  /* #<void> */" nl
-              ;                         "  MOV(R0, SOB_VOID);" nl
-              ;                         "  /* end of #<void> */" nl))
-              ; ((eq? c '()) (string-append
-              ;               "  /* '() (empty list) */" nl
-              ;               "  MOV(R0, SOB_NIL);" nl
-              ;               "  /* end of '() */" nl))
-              ; ))))))
 
 (define ^label-orexit (^^label "Lor_exit"))
 
@@ -1532,6 +1518,7 @@
                label-exit ":" nl
                "  /* end of if3 */"
                nl))))))
+
 (define ^label-lambda-code (^^label "Llambdacode"))
 (define ^label-lambda-exit (^^label "Llambdaexit"))
 (define ^label-loop (^^label "Lloop"))
@@ -1553,6 +1540,8 @@
             (label-endloop1 (^label-end-loop))
             (label-loop2 (^label-loop))
             (label-endloop2 (^label-end-loop))
+            (label-loop3 (^label-loop))
+            (label-endloop3 (^label-end-loop))
             (label-copyparam (^label-copy-param)))
         (string-append
          "  /* lambda-simple */" nl
@@ -1576,17 +1565,9 @@
          "  ADD(R4, 1);" nl
          "  JUMP("label-loop1");" nl
          label-endloop1":" nl
-         ;"  for (i=0, j=1; i < IMM("(number->string env-size)"); i++, j++)" nl
-         ;"  {" nl;
-         ;"    MOV(INDD(R1,j), INDD(R2,i));" nl
-         ;"  }" nl
          "  /* done copying old env to new env location. Note that R1[0] is reserved for the environment expansion (not part of the old env) */" nl
          label-copyparam":" nl
          "  /* allocating memory for a new row in the new environment array (will be pointer from R0[0]) */" nl
-         ;"  CMP("param-size-str",0); //check if the number of new bvars is zero" nl
-         ;"  JUMP_NE("label-lambda-new-bvars"); //if there are new bvars, continue as normal with the env expansion" nl
-         ;"  PUSH(1); //else, allocate just one cell" nl
-         ;label-lambda-new-bvars":" nl
          "  PUSH("param-size-str");" nl
          "  CALL(MALLOC);" nl
          "  DROP(1);" nl
@@ -1604,13 +1585,6 @@
          "  ADD(R5,1);" nl
          "  JUMP("label-loop2");" nl
          label-endloop2":" nl  
-         ;"  for (i=0; i < IMM("param-size-str"); i++)" nl
-         ;"  {" nl
-         ;"    /* The following 3 lines: r3[i] = FPARG(2+i). Note that FPARG(2+i) holds the i-th argument to the surrounding lambda */" nl
-         ;"    MOV(R4,IMM(2));" nl
-         ;"    ADD(R4,IMM(i));" nl
-         ;"    MOV(INDD(R3,i),FPARG(R4));" nl
-         ;"  }" nl
          "  /* Done copying old params to new environment */" nl
          "  MOV(INDD(R1,0), R3); //R1[0] now points to the first row in the new expanded environment" nl
          nl
@@ -1637,17 +1611,31 @@
            (let ((params-length-str (number->string (length params))))
              (string-append
               "  /* stack-correction code for lambda-opt/variadic */" nl
-              "  MOV(R1,FPARG(1+FPARG(1)));" nl
+              "  MOV(R2, FPARG(1));" nl
+              "  ADD(R2, IMM(1));" nl
+              "  MOV(R1, FPARG(R2));" nl
               "  /* Creating a list of optional arguments */" nl
-              "  for (i = FPARG(1); i>1+"params-length-str"; i--) {" nl
-              "    PUSH(R1); //cdr" nl
-              "    PUSH(FPARG(i)); //car" nl
-              "    CALL(MAKE_SOB_PAIR);" nl
-              "    MOV(R1, R0); //put the result in R0" nl
-              "    DROP(2);" nl
-              "  }" nl
+              "  MOV(R6, FPARG(1));" nl
+              "  MOV(R7,"params-length-str");" nl
+              "  ADD(R7,IMM(1));" nl
+              label-loop3":" nl
+              "  CMP(R6,R7);" nl
+              "  JUMP_LE("label-endloop3");" nl
+              "  PUSH(R1);" nl
+              "  MOV(R2, FPARG(R6));" nl
+              "  PUSH(R2);" nl
+              "  CALL(MAKE_SOB_PAIR);" nl
+              "  DROP(2);" nl
+              "  MOV(R1,R0);" nl
+              "  DECR(R6);" nl
+              "  JUMP("label-loop3");" nl
+              label-endloop3":" nl
               "  /* Finished creating the list of optional arguments */" nl
-              "  MOV(STACK(SP-5-"params-length-str"),R1); //Puting the optional arguments list after all the non-optional params" nl
+              "  //Puting the optional arguments list after all the non-optional params" nl
+              "  MOV(R2, SP);" nl
+              "  SUB(R2, IMM(5));" nl
+              "  SUB(R2,IMM("params-length-str"));" nl
+              "  MOV(STACK(R2), R1);" nl
               "  /* end of stack-correction code for lambda-opt/variadic" nl
               "  /* code-gen of the lambda body */" nl
               (code-gen body (+ env-size 1) (+ 1 (length params)) const-table fvar-table label-e-end)
@@ -1681,27 +1669,31 @@
              "  /* end of bvar */" nl
              )))))
            
-(define create-string-sob
+;;; Generates code code to create an error object with a given string
+(define create-sob-error
   (lambda (str)
-    (let* ((ascii-chars-rev (map char->integer (reverse (string->list str))))
-           (comment1 (string-append "  /* generating error string */" nl))
+    (let* ((ascii-chars (map char->integer (string->list str)))
+           (comment1 (string-append "  /* generating error object */" nl))
            (push-chars (apply string-append (map
                                      (lambda (char)
                                        (string-append "  PUSH(" (number->string char) ");" nl))
-                                     ascii-chars-rev)))
+                                     ascii-chars)))
            (push-length (string-append "  PUSH("(number->string (string-length str))");" nl))
-           (make-sob-string (string-append "  CALL(MAKE_SOB_STRING);" nl))
+           (make-sob-error (string-append "  CALL(MAKE_SOB_ERROR);" nl))
            (drop (string-append "  DROP(" (number->string (+ (string-length str) 1)) ");" nl))
-           (comment2 (string-append "  /* done generating error string */" nl)))
-      (string-append comment1 push-chars push-length make-sob-string drop comment2))))
+           (comment2 (string-append "  /* done generating error object */" nl)))
+      (string-append comment1 push-chars push-length make-sob-error drop comment2))))
 
 
-           push-lst)))
+(define ^label-is-proc (^^label "L_is_proc"))
+(define ^label-no-err (^^label "L_no_err"))
 (define code-gen-applic
   (lambda (e env-size param-size const-table fvar-table label-e-end)
     (with e
           (lambda (applic proc args)
-            (let ((args-num-string (number->string (+ (length args) 1)))) ;1 is added because of the extra Magic argument
+            (let ((args-num-string (number->string (+ (length args) 1)))  ;1 is added because of the extra Magic argument
+                  (label-is-proc (^label-is-proc))
+                  (label-no-err (^label-no-err)))
               (string-append
                "  /* applic */" nl
                "  PUSH(SOB_NIL); //Magic argument. Reserving a space for a potential empty list of optional arguments." nl
@@ -1711,16 +1703,22 @@
                                         (code-gen arg env-size param-size const-table fvar-table label-e-end)
                                         "  PUSH(R0);" nl))
                                      (reverse args)))
-               "  PUSH("args-num-string")" nl
+               "  PUSH("args-num-string");" nl
                (code-gen proc env-size param-size const-table fvar-table label-e-end)
                "  CMP(IND(R0), T_CLOSURE);" nl 
                "  JUMP_EQ("label-is-proc");" nl
-               "  
+               (create-sob-error (string-append "Error: " (sexpr->display-string proc) " is not a procedure."))
+               "  JUMP("label-e-end");" nl
+               label-is-proc":" nl
                "  PUSH(INDD(R0,1));" nl
                "  CALLA(INDD(R0,2));" nl
                "  MOV(R1, STARG(0));" nl
                "  ADD(R1, 2);" nl
                "  DROP(R1);" nl
+               "  CMP(R0, T_ERROR);" nl
+               "  JUMP_NE("label-no-err");" nl
+               "  JUMP("label-e-end");" nl
+               label-no-err":"
                " /* end of applic */" nl
                ))))))
 
@@ -1731,7 +1729,8 @@
             (let ((args-num-string (number->string (+ (length args) 1))) ;Adding 1 because of the extra Magic argument
                   (frame-copy-steps (number->string (+ (length args) 3)))
                   (label-loop (^label-loop))
-                  (label-endloop (^label-end-loop)))
+                  (label-endloop (^label-end-loop))
+                  (label-is-proc (^label-is-proc)))
               (string-append
                "  /* tc-applic */" nl
                "  /* Pushing arguments */" nl
@@ -1747,7 +1746,10 @@
                "  PUSH("args-num-string"); //Pushing the number of arguments" nl
                (code-gen proc env-size param-size const-table fvar-table label-e-end)
                "  CMP(INDD(R0,0),T_CLOSURE); //Make sure we got a closure" nl
-               "  JUMP_NE("label-not-proc");" nl
+               "  JUMP_EQ("label-is-proc");" nl
+               (create-sob-error (string-append "Error: " (sexpr->display-string proc) " is not a procedure."))
+               "  JUMP("label-e-end");" nl
+               label-is-proc":"
                "  PUSH(INDD(R0,1)); //Push the environment onto the stack" nl
                "  PUSH(FPARG(-1)); //Push the return address from current frame (the same return address!)" nl
                "  MOV(R2, FPARG(1)); //n" nl
@@ -1757,30 +1759,24 @@
                "  SUB(R3,R2);" nl
                "  MOV(FP,FPARG(-2)); //Restore old FP in preperation for JUMP" nl
                "  /* Loop to overwrite the old frame */" nl
-               ;"  MOV(R2, 0); //loop counter" nl
-               ;"  MOV(R3, "args-num-string");" nl
-               ;"  ADD(R3, 1);" nl
-               ;label-loop":" nl
-               ;"  CMP(R2,"frame-copy-steps"); //loop condition" nl
-               ;"  JUMP_GE("label-endloop");" nl
-               ;"  MOV(STACK(R1), STARG(R3));" nl
-               ;"  ADD(R2,1); //incrementing loop counter" nl 
-               ;"  ADD(R1,1);" nl
-               ;"  MOV(R3, "args-num-string");" nl
-               ;"  ADD(R3, 1);" nl
-               ;"  SUB(R3, R2);" nl
-               ;"  JUMP("label-loop");" nl
-               ;label-endloop":" nl
                "  MOV(R1,FP);"  nl
+               "  MOV(R5,IMM(0)); //loop counter"  nl
+               "  MOV(R6,IMM("args-num-string"));" nl
+               "  ADD(R6, IMM(3));" nl
+               label-loop":"
+               "  CMP(R5,R6);" nl
+               "  JUMP_GE("label-endloop");" nl
+               "  MOV(R7,IMM("args-num-string"));" nl
+               "  ADD(R7,IMM(1));" nl
+               "  SUB(R7,R5);" nl
+               "  MOV(STACK(R3), STARG(R7));" nl
+               "  INCR(R3);" nl
+               "  INCR(R5);" nl
+               "  JUMP("label-loop");" nl
+               label-endloop":" nl
                "  /* End of loop to overwrite old frame */" nl
-               "  for (i=0; i<"args-num-string"+3; i++)" nl
-               "  {" nl
-               "    MOV(STACK(R3), STARG("args-num-string"+1-i));" nl
-               "    ADD(R3,1);" nl
-               "  }" nl
                "  MOV(SP,R3);" nl
-               "  JUMPA(INDD(R0,2));" nl
-               ;"  CALLA(INDD(R0,2)); //Jump to procedure code" nl
+               "  JUMPA(INDD(R0,2)); //Jump to procedure code" nl
                ))))))
                
                
@@ -1818,10 +1814,10 @@
                    "  MOV(R0,IND("(number->string fvar-addr)")); //returning the value of the fvar" nl
                    "  /* end of (fvar "(symbol->string name)") */" nl
                    )
-                  (string-append
-                   " /* AN ERROR OF SOME SORT!! TODO!!! */"
-                   )))))))
+                  (error "Compilation error which can't happen")
+                  ))))))
                      
+;;; creates pe identifier functions (by tag)
 (define ^pe-??
   (lambda (tag)
     (lambda (pe)
@@ -1844,9 +1840,11 @@
 (define code-gen-lambda-simple (^code-gen-lambda 'simple))
 (define code-gen-lambda-opt (^code-gen-lambda 'opt))
 (define code-gen-lambda-variadic (^code-gen-lambda 'variadic))
+
+;;; Main code generation procedure
 (define code-gen
   (lambda (pe env-size param-size const-table fvar-table label-e-end)
-    (let ((params `(,pe ,env-size ,param-size ,const-table ,fvar-table ,label-end-e)))
+    (let ((params `(,pe ,env-size ,param-size ,const-table ,fvar-table ,label-e-end)))
       (cond
        ((pe-pvar? pe) (apply code-gen-pvar params))
        ((pe-bvar? pe) (apply code-gen-bvar params))
@@ -1861,8 +1859,9 @@
        ((pe-lambda-variadic? pe) (apply code-gen-lambda-variadic params))
        ((pe-define? pe) (apply code-gen-define params))
        ((pe-fvar? pe) (apply code-gen-fvar params))
-       (else ("compilation error: unknown expression"))))))  ;;TODO go to error here
+       (else (error (string-append "Compilation error: unknown expression" (sexpre->display-string pe)))))))) 
 
+;;; Write a string to a file
 (define write-to-file
   (lambda (filename string)
     (let ((p (open-output-file filename '(replace))))
@@ -1871,10 +1870,12 @@
         (close-port p)))))
 
 
+;;; apply the full parsing and annotation process on a given sexpr
 (define parse-full
   (lambda (sexpr)
     (annotate-tc (pe->lex-pe (parse sexpr)))))
 
+;;; Topologically sort constants
 (define topo-srt-const
   (lambda (e)
     (cond
@@ -1893,6 +1894,7 @@
        (else `(,e))
        )))
 
+;;; remove duplicates from a list
 (define dedup
   (lambda (l)
     (letrec ((run
@@ -1904,16 +1906,8 @@
                  (else (cons (car l) (run (cdr l))))))))
       (reverse (run (reverse l))))))
               
-    ;(reverse (dedup-helper (reverse l)))))
 
-(define dedup-helper
-  (lambda (l)
-      (cond
-       ((null? l) '())
-       ((member (car l) (cdr l))
-        (dedup-helper (cdr l)))
-       (else (cons (car l) (dedup-helper (cdr l)))))))
-
+;;; returns a function which, given a tag, extracts from a parsed expression all the expressions specified by that tag.
 (define ^extract-by-tag
   (lambda (tag)
     (letrec ((run
@@ -1925,31 +1919,37 @@
                  (else (append (run (car pe)) (run (cdr pe))))))))
       run)))
 
+;;; see above
 (define extract-consts (^extract-by-tag 'const))
 (define extract-fvars (^extract-by-tag 'fvar))
 
+;;; Basically just remove duplicates from a list of (fvar x)s, and return only the xs themselves
 (define process-fvars
   (lambda (fvar-list)
     (dedup (apply append (map cdr fvar-list)))))
 
+;;; Get a list of (contant x)-type things, and return a topologically sorted, deduped, listed of constants.
 (define process-consts 
   (lambda (const-list)
     (dedup (apply append (map (lambda (const)
                                 (dedup (topo-srt-const (cadr const))))
                               const-list)))))
 
+;;; Get the nth item in a list
 (define get-item
   (lambda (l col)
     (if (eq? col 1)
         (car l)
         (get-item (cdr l) (- col 1))))) 
 
+;;; assoc-improved. Like assoc (with equal?), but allows to search by a different column.
 (define assoc-i
   (lambda (key l col)
     (cond ((null? l) #f)
           ((equal? (get-item (car l) col) key) (car l))
           (else (assoc-i key (cdr l) col)))))
 
+;;; Creates an fvar table from a list of fvars
 (define fvars->dict
   (lambda (fvar-lst acc-lst addr)
     (cond
@@ -1960,6 +1960,7 @@
                      (cons `(,addr ,curr) acc-lst)
                      (+ addr 1)))))))
 
+;;; Returns the address of the first symbol in the constants table. I need this for symbol lookup in string->symbol or something like that.
 (define get-first-sym-addr
   (lambda (const-dict)
     (if (null? const-dict)
@@ -1969,6 +1970,7 @@
               (caar const-dict)
               (get-first-sym-addr (cdr const-dict)))))))
 
+;;; Build a constants table/dictionary, as discussed in class. 
 (define consts->dict
   (lambda (const-lst acc-lst addr last-sym-addr)
     (cond
@@ -2017,12 +2019,14 @@
          (else (consts->dict (cdr const-lst) acc-lst addr last-sym-addr)))
         )))))
 
+;;; Take a list of strings, seperate them by comma and return a one big string of comma seperated words
 (define comma-sep
   (lambda (list)
     (fold-left (lambda (e x) (string-append e ", " x))
                `,(car list)
                (cdr list))))
 
+;;; Turn a list of symbols or numbers into a list of strings. Not exactly exhaustive, but it's fine with me.
 (define list->list-of-strings
   (lambda (l)
     (map (lambda (x)
@@ -2030,18 +2034,28 @@
                  ((number? x) (number->string x))))
          l)))
 
+;;; gets the number of fvars in an fvar table
 (define get-fvar-size
   (lambda (dict)
     (length dict)))
 
+;;; gets the number of values in the constants' memory image
 (define get-consts-size
   (lambda (dict)
     (length (list->list-of-strings (apply append (map caddr dict))))))
 
+;;;create a string of the memory image of the constant, given a constant table.
 (define dict->consts-string
   (lambda (dict)
     (comma-sep (list->list-of-strings (apply append (map caddr dict))))))
 
+;;;create a string of the memory image of the constant, given a constant table.
+;;;This is actually the same as the previous procedure and I could've just written (define x [previous procedure])
+(define create-consts-string
+  (lambda (dict)
+      (dict->consts-string dict)))
+
+;;; create a constant table, with the basic constants in it
 (define create-consts-dict
   (lambda (pes addr)
     (let ((basic-consts2 `((,addr () (\T_NIL))
@@ -2049,16 +2063,58 @@
                            (,(+ addr 2) ,#f (\T_BOOL 0))
                            (,(+ addr 4) ,#t (\T_BOOL 1)))))
       (consts->dict (process-consts (extract-consts pes)) (reverse basic-consts2) (+ addr 6) -1))))
-    
-(define create-consts-string
-  (lambda (dict)
-      (dict->consts-string dict)))
 
+
+;;; Create the fvar table
 (define create-fvar-dict
   (lambda (pes addr)
     (fvars->dict (process-fvars (extract-fvars pes)) '() addr)))
 
+;;; Helper function I copied from the support code. I use it for errors.
+(define sexpr->display-string
+  (letrec ((run
+	    (lambda (e)
+	      (cond ((null? e) "()")
+		    ((boolean? e) (if e "#t" "#f"))
+		    ((char? e) (char->string e))
+		    ((number? e) (number->string e))
+		    ((symbol? e) (symbol->string e))
+		    ((pair? e)
+		     (string-append "(" (pair->string (car e) (cdr e)) ")"))
+		    ((string? e) e)
+		    ((vector? e) (vector->string e))
+		    ((void? e) "#<void>")
+		    ((procedure? e) "#<procedure>")
+		    (else (error 'sexpr->string "What's this" e)))))
+	   (vector->string
+	    (lambda (v)
+	      (let ((n (vector-length v))
+		    (s (vector->list v)))
+		(string-append
+		 "#"
+		 (run n)
+		 (run s)))))
+	   (pair->string
+	    (lambda (a d)
+	      (let ((string-a (run a)))
+		(cond ((null? d) string-a)
+		      ((pair? d)
+		       (let ((string-d (pair->string (car d) (cdr d))))
+			 (string-append string-a " " string-d)))
+		      (else (let ((string-d (run d)))
+			      (string-append string-a " . " string-d)))))))
+	   (char->string
+	    (lambda (ch)
+	      (list->string
+	       (list ch)))))
+    (lambda (e)
+      (if (void? e)
+	  ""
+	  (run e)))))
+
 (define ^label-sexpr-end (^^label "L_pe_epilogue"))
+
+;;; The main compiling procedure
 (define compile-scheme-file
   (lambda (source target)
     (let* ((sexprs (file->sexprs source))
@@ -2088,54 +2144,9 @@
            (complete-code (string-append prologue mem-init output-code epilogue)))
       (write-to-file target complete-code))))
 
+;;;Creating a constant table of all the ascii cars. I don't use this in practice.
 (define create-abc-dict
   (lambda (addr remaining)
     (if (>= remaining 0)
         (cons `(,(integer->char remaining) ,(+ addr remaining) (\T_CHAR ,remaining)) (create-abc-dict addr (- remaining 1)))
         '())))
-
-
-;(define d3 (create-consts-dict (map parse-full '((begin '(1 3 4 "abc")) (begin "abc") (begin '(1 23 "ad" "abc" 2 3)))) 100))
-;(create-consts-dict (map parse-full '((begin '(1 2 3 4 5)))) 100)
-;(define d2 (create-consts-dict (map parse-full '((begin 1 '()))) 100))
-;(define d1 (process-consts (extract-consts (parse-full '(begin '(1))))))
-;(process-consts (extract-consts (parse-full '(begin 1))))
-;dict2
-;(assoc-i 104 dict2 2)
-;(process-consts (extract-consts (map parse-full '((begin '(1 #f 2 3 4 "abc")) (begin "abc") (begin '(1 23 "ad" "abc" 2 3))))))
-;(create-consts-string d3)
-;(create-consts-string (create-consts-dict (map parse-full '(#f)) 100))
-;(process-consts (extract-consts (map parse-full '(#f))))
-;(parse-full '#f)
-
-;(parse-full '(begin 'm))
-(define t1 (process-consts (extract-consts (parse-full '(begin 'm)))))
-t1
-;(consts->dict t1 '() 100)
-;(create-consts-dict t1 100) 
-;(create-consts-dict (process-consts (extract-consts (parse-full '(begin 'm)))) 100)
-;(define d1 (create-consts-dict (map parse-full '((begin 'm))) 100))
-;(create-consts-string d1)
-;(parse-full '(#(1 2 3)))
-;(define f1 (process-fvars (extract-fvars (parse-full '(define fact (lambda (n) (if (zero? n) 1 (* n (fact (- n 1))))))))))
-;(fvars->dict f1 '() 200)
-;(fvars->dict (process-fvars (extract-fvars (map parse-full (file->sexprs "tests/define.scm")))) '() 200)
-;(define c1 (process-consts (extract-consts (parse-full ''(a)))))
-;c1
-;(consts->dict c1 '() 100 -1)
-
-(define d2 (create-consts-dict (map parse-full (file->sexprs "tests/symbols.scm")) 100))
-d2
-(get-first-sym-addr d2)
-(extract-consts (parse-full '#\a))
-(process-consts (extract-consts (parse-full '#\a)))
-(define d3 (consts->dict (process-consts (extract-consts (parse-full '#\a))) '() 100 -1))
-d2
-d3
-(define d4 (consts->dict (process-consts (extract-consts (parse-full ''#(a 2 #(1 2) 3)))) '() 100 -1))
-(define d5 (create-consts-dict (map parse-full (file->sexprs "test-plus/plus.scm")) 100))
-d4
-
-d3
-
-d5
