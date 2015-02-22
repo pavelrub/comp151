@@ -900,6 +900,7 @@
        "  MOV(R1, FPARG(2));" nl
        "  MOV(R0,INDD(R1,1));" nl
        "  POP(R1);" nl
+       "  MOV(R0,SOB_VOID);" nl
        "  POP(FP);" nl
        "  RETURN;" nl
        "  /* end of symbol->string code */" nl 
@@ -1707,8 +1708,11 @@
            
 ;;; Generates code code to create an error object with a given string
 (define create-sob-error
-  (lambda (str)
-    (let* ((ascii-chars (map char->integer (string->list str)))
+  (lambda (str1)
+    (let* ((str (if (> (string-length str1) 20)
+                    (string-append (substring str1 0 15) "...")
+                    str1))
+           (ascii-chars (map char->integer (string->list str)))
            (comment1 (string-append "  /* generating error object */" nl))
            (push-chars (apply string-append (map
                                      (lambda (char)
