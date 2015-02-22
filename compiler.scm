@@ -1,3 +1,6 @@
+;;; Compiler for comp151 @ BGU CS Department
+;;; Author: Pavel Rubinson, 2015.
+
 (load "pattern-matcher.scm")
 
 
@@ -16,6 +19,9 @@
 ;;; And just for good luck :-)
 (define with (lambda (s f) (apply f s)))
 
+;;; ==========================================================
+;;; ===================== Assignment 2 =======================
+;;; ==========================================================
 (define simple-const?
   (lambda (x)
     (or (boolean? x) (char? x) (number? x) (string? x))))
@@ -267,6 +273,9 @@
              (error 'parse
                     (format "I can't recognize this: ~s" e)))))))
 
+;;; ==========================================================
+;;; ===================== Assignment 3 =======================
+;;; ==========================================================
 (define get-minor-acc
   (lambda (var var-list minor)
     (cond ((null? var-list) -1)
@@ -426,6 +435,12 @@
   (lambda (expr)
     (atp expr #f)))
 
+
+;;; ==========================================================
+;;; ===================== Code Generator =====================
+;;; ==========================================================
+
+
 ;;; it is what it is
 (define file->sexprs
   (lambda (filename)
@@ -527,6 +542,7 @@
       (string-append
        "#include <stdio.h>" nl
        "#include <stdlib.h>" nl
+       "#include <string.h>" nl ;this is for memcpy
        "#define DO_SHOW 2" nl
        "#include \"arch/cisc.h\"" nl
        "#include \"arch/info.h\"" nl
@@ -571,10 +587,16 @@
        label-cons-code":" nl
        "  PUSH(FP);" nl
        "  MOV(FP,SP);"  nl
+       "  CMP(FPARG(1),IMM(3));" nl
+       "  JUMP_EQ(L_cons_noerr);" nl
+       (create-sob-error "Error: incorrect argument count in call to cons")
+       "  JUMP(L_cons_done);" nl
+       "L_cons_noerr:" nl
        "  PUSH(FPARG(3)); //The cdr" nl
        "  PUSH(FPARG(2)); //The car" nl
        "  CALL(MAKE_SOB_PAIR);" nl
        "  DROP(2);" nl
+       "L_cons_done:" nl
        "  POP(FP);" nl
        "  RETURN;" nl
        "  /* end of cons code */" nl
@@ -585,12 +607,14 @@
        "  MOV(FP,SP);" nl
        "  PUSH(R1); //saving R1" nl
        "  PUSH(R2); //saving R2" nl
+       "  CMP(FPARG(1),IMM(3));" nl
+       "  JUMP_NE(L_binp_err_narg);" nl
        "  MOV(R1, FPARG(2));" nl
        "  MOV(R2, FPARG(3));" nl
        "  CMP(IND(R1),T_INTEGER);" nl
-       "  JUMP_NE(L_binp_err);" nl
+       "  JUMP_NE(L_binp_err_targ);" nl
        "  CMP(IND(R2),T_INTEGER);" nl
-       "  JUMP_NE(L_binp_err);" nl
+       "  JUMP_NE(L_binp_err_targ);" nl
        "  MOV(R1, INDD(R1,1));" nl
        "  MOV(R2, INDD(R2,1));" nl
        "  ADD(R1, IMM(R2));" nl
@@ -598,7 +622,10 @@
        "  CALL(MAKE_SOB_INTEGER);" nl
        "  DROP(IMM(1));" nl
        "  JUMP(L_binp_cont);" nl
-       "L_binp_err:" nl
+       "L_binp_err_narg:" nl
+       (create-sob-error "Error: incorrect argument count in call to bin+")
+       "  JUMP(L_binp_cont)" nl
+       "L_binp_err_targ:" nl
        (create-sob-error "Error: attempt to apply bin+ to a non-integer")
        "L_binp_cont:" nl
        "  POP(R2); //restoring R2" nl
@@ -1237,6 +1264,13 @@
        "  MOV(FP,SP);" nl
        "  MOV(R1, FPARG(3)); //put the pointer to the arguments list in R1" nl
        "  MOV(R7, FPARG(2)); //put the pointer to the closure in R7" nl
+       "  CMP(IND(R7),T_CLOSURE); //Check if the type of the first argument is correct" nl
+       "  JUMP_NE(L_apply_err_argt);" nl
+       "  CMP(IND(R1),T_PAIR);" nl
+       "  JUMP_EQ(L_apply_noerr);" nl
+       "  CMP(IND(R1),T_NIL);" nl
+       "  JUMP_NE(L_apply_err_argt);" nl
+       "L_apply_noerr:" nl
        "  MOV(R5,IND(0)); //This is the memoery address where we will start the list unraveling. We need to remember it to loop backwards." nl
        "  MOV(R0, R5); //R0 will be the end address of the list arguments in memory, so at first we will make it less than R5" nl
        "  SUB(R0, 1); //making it less than R5" nl
@@ -1276,6 +1310,10 @@
        "  PUSH(R2); //pushing the return address" nl
        "  MOV(FP,R3); //FP now points to the old FP" nl
        "  JUMPA(INDD(R7,2)); //jump to the code of the closure" nl
+       "L_apply_err_argt:" nl
+       (create-sob-error "Error: attempt to call apply with wrong argument types")
+       "  POP(FP);" nl
+       "  RETURN;" nl
        "  /* end of apply code */" nl
        nl
        "  /* eq? code */" nl
@@ -1476,13 +1514,12 @@
             (let* ((first-pes (get-all-but-last pes))
                   (last-pe (get-last pes))
                   (label-exit (^label-orexit))
-                  (SOB_FALSE (number->string (car (assoc-i #f const-table 2))))
                   (first-pes-code 
                    (apply string-append
                           (map (lambda (e)
                                  (string-append
                                   (code-gen e env-size param-size const-table fvar-table label-e-end)
-                                  "  CMP(R0,"SOB_FALSE");" nl
+                                  "  CMP(R0,SOB_FALSE);" nl
                                   "  JUMP_NE(" label-exit ");" nl))
                                first-pes)))
                   (last-pe-code (code-gen last-pe env-size param-size const-table fvar-table label-e-end)))
@@ -1503,13 +1540,12 @@
             (let ((code-test (code-gen test env-size param-size const-table fvar-table label-e-end))
                   (code-dit (code-gen do-if-true env-size param-size const-table fvar-table label-e-end))
                   (code-dif (code-gen do-if-false env-size param-size const-table fvar-table label-e-end))
-                  (SOB_FALSE (number->string (car (assoc-i #f const-table 2))))
                   (label-else (^label-if3else))
                   (label-exit (^label-if3exit)))
               (string-append
                "  /* if3 */"
                code-test nl ; when run, the result of the test will be in R0
-               "  CMP(R0,"SOB_FALSE");" nl
+               "  CMP(R0,SOB_FALSE);" nl
                "  JUMP_EQ(" label-else ");" nl
                code-dit nl
                "  JUMP(" label-exit ");" nl
@@ -1784,15 +1820,14 @@
   (lambda (pe env-size param-size const-table fvar-table label-e-end)
     (with pe
           (lambda (def var value)
-            (let ((fvar-addr (car (assoc-i (cadr var) fvar-table 2)))
-                  (SOB_VOID (car (assoc-i *void-object* const-table 2))))
+            (let ((fvar-addr (car (assoc-i (cadr var) fvar-table 2))))
               (string-append
                "  /* code-gen for (define a e) */" nl
                "  /* evaluating the value of e */" nl
                (code-gen value env-size param-size const-table fvar-table label-e-end)
                "  /* finished evaluating the value of e */" nl
                "  MOV(IND("(number->string fvar-addr)"),R0); //setting the fvar value in the memory" nl
-               "  MOV(R0,"(number->string SOB_VOID)"); //define should return #<void>" nl 
+               "  MOV(R0,SOB_VOID); //define should return #<void>" nl 
                "  /* end of code-gen for (define a e) */" nl
                ))))))
 
@@ -2070,7 +2105,7 @@
   (lambda (pes addr)
     (fvars->dict (process-fvars (extract-fvars pes)) '() addr)))
 
-;;; Helper function I copied from the support code. I use it for errors.
+;;; Helper function I stole from the support code. I use it for errors.
 (define sexpr->display-string
   (letrec ((run
 	    (lambda (e)
