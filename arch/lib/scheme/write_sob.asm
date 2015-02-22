@@ -4,6 +4,7 @@
  * of that object.
  * 
  * Programmer: Mayer Goldberg, 2010
+ * Additions: Pavel Rubinson, 2015
  */
 
  WRITE_SOB:
@@ -29,6 +30,8 @@
   JUMP_EQ(WRITE_SOB_VECTOR);
   CMP(R0, IMM(T_CLOSURE));
   JUMP_EQ(WRITE_SOB_CLOSURE);
+  CMP(R0, IMM(T_ERROR));
+  JUMP_EQ(WRITE_SOB_ERROR);
   PUSH(R0);
   PUSH(IMM('\n'));
   CALL(PUTCHAR);

@@ -2,6 +2,7 @@
  * Type tags for the basic Scheme data types
  *
  * Programmer: Mayer Goldberg, 2010
+ * Additions by: Pavel Rubinson, 2015
  */
 
 #define T_VOID 		937610
@@ -14,6 +15,7 @@
 #define T_PAIR 		885397
 #define T_VECTOR 	335728
 #define T_CLOSURE 	276405
+#define T_ERROR   183403
 
 /* 451794 544512 183403 101555 957412 645713 110463 358902
  * 511179 615181 602995 921183 685967 286949 743140 529751 

@@ -2,6 +2,7 @@
  * Support for creating & manipulating Scheme objects in assembly
  *
  * Programmer: Mayer Goldberg, 2010
+ * Additions by: Pavel Rubinson, 2015
  */
 
 #include "lib/scheme/types.inc"
@@ -14,6 +15,7 @@
 #include "lib/scheme/make_sob_closure.asm"
 #include "lib/scheme/make_sob_vector.asm"
 #include "lib/scheme/make_sob_string.asm"
+#include "lib/scheme/make_sob_error.asm"
 #include "lib/scheme/is_sob_void.asm"
 #include "lib/scheme/is_sob_nil.asm"
 #include "lib/scheme/is_sob_bool.asm"
@@ -30,8 +32,9 @@
 #include "lib/scheme/write_sob_closure.asm"
 #include "lib/scheme/write_sob_string.asm"
 #include "lib/scheme/write_sob_vector.asm"
+#include "lib/scheme/write_sob_error.asm"
 #include "lib/scheme/write_sob.asm"
-
+     
 {
  WRITE_SOB_SYMBOL:
   PUSH(FP);
